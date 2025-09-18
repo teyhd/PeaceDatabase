@@ -1,11 +1,12 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using PeaceDatabase.Core.Models;
 using PeaceDatabase.Core.Services;
+using PeaceDatabase.Storage;
 
 namespace PeaceDatabase.Controllers;
 
 [ApiController]
-[Route("v1/db/{db}")]
+[Route("v1/db/{db?}")]
 public class DbController : ControllerBase
 {
     private readonly IDocumentService _service;
@@ -13,6 +14,23 @@ public class DbController : ControllerBase
     public DbController(IDocumentService service)
     {
         _service = service;
+    }
+
+    // -------------------
+    // Управление базами
+    // -------------------
+    [HttpPut]
+    public IActionResult CreateDb(string db)
+    {
+        var (ok, err) = _service.CreateDb(db);
+        return ok ? Ok(new { ok = true }) : BadRequest(new { error = err });
+    }
+
+    [HttpDelete]
+    public IActionResult DeleteDb(string db)
+    {
+        var (ok, err) = _service.DeleteDb(db);
+        return ok ? Ok(new { ok = true }) : NotFound(new { error = err });
     }
 
     [HttpGet("{id}")]
@@ -27,7 +45,7 @@ public class DbController : ControllerBase
     {
         doc.Id = id;
         var (ok, d, err) = _service.Put(db, doc);
-        return ok ? Ok(d) : BadRequest(new { error = err });
+        return ok ? Ok(d) : Conflict(new { error = err });
     }
 
     [HttpPost]
@@ -45,9 +63,18 @@ public class DbController : ControllerBase
     }
 
     [HttpGet("_all_docs")]
-    public IActionResult AllDocs(string db)
+    public IActionResult AllDocs(string db, [FromQuery] int skip = 0, [FromQuery] int limit = 1000)
     {
-        var docs = _service.AllDocs(db);
+        limit = Math.Min(limit, 1000);
+        var docs = (_service as InMemoryDocumentService)?.AllDocs(db, skip, limit);
         return Ok(new { rows = docs });
+    }
+
+    [HttpGet("_changes")]
+    public IActionResult Changes(string db)
+    {
+        if (_service is not InMemoryDocumentService mem) return NotFound();
+        var seq = mem.Seq(db);
+        return Ok(new { seq });
     }
 }
