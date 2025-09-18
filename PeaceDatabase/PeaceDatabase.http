@@ -1,0 +1,6 @@
+@PeaceDatabase_HostAddress = http://localhost:5064
+
+GET {{PeaceDatabase_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
