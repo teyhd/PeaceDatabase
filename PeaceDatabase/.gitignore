@@ -1,0 +1,59 @@
+# Build results
+bin/
+obj/
+out/
+
+# User-specific files
+*.user
+*.userosscache
+*.suo
+*.sln.docstates
+
+# VS Code settings
+.vscode/
+
+# Visual Studio settings
+.vs/
+
+# ASP.NET Core environment files
+appsettings.Development.json
+appsettings.Local.json
+appsettings.*.local.json
+
+# Logs
+*.log
+
+# Docker
+**/Dockerfile
+**/docker-compose*
+
+# Publish output
+publish/
+*.publish/
+
+# Test results
+TestResults/
+*.coverage
+*.coveragexml
+
+# NUGET packages
+*.nupkg
+*.snupkg
+.nuget/
+packages/
+project.lock.json
+project.fragment.lock.json
+
+# Rider
+.idea/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# User secrets
+secrets.json
+
+# Others
+*.swp
+*.tmp
