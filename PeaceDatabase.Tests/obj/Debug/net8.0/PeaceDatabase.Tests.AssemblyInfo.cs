@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("PeaceDatabase.Tests")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+88fedd3c2cb3a35eed162a196bb7f9ba7a9a0eea")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+03515b77e3bd4e65866424c1e16c9ff7f13eb133")]
 [assembly: System.Reflection.AssemblyProductAttribute("PeaceDatabase.Tests")]
 [assembly: System.Reflection.AssemblyTitleAttribute("PeaceDatabase.Tests")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

@@ -174,6 +174,15 @@ namespace PeaceDatabase.Storage.InMemory
             finally { st.Lock.ExitWriteLock(); }
         }
 
+        // InMemoryDocumentService.cs
+        public void SetSeq(string db, int value)
+        {
+            if (!TryGetDb(db, out var st)) return;
+            st.Lock.EnterWriteLock();
+            try { st.Seq = value < 0 ? 0 : value; }
+            finally { st.Lock.ExitWriteLock(); }
+        }
+
         public IEnumerable<Document> AllDocs(string db, int skip = 0, int limit = 1000, bool includeDeleted = true)
         {
             if (!TryGetDb(db, out var st)) yield break;
@@ -463,6 +472,174 @@ namespace PeaceDatabase.Storage.InMemory
                 if (results.Count >= limit) break;
             }
             return results;
+        }
+        public void Import(string db, Document doc, bool setAsHead = true, bool reindex = true, bool bumpSeq = false)
+        {
+            if (!TryGetDb(db, out var st)) return;
+            if (string.IsNullOrWhiteSpace(doc.Id)) return;
+            if (string.IsNullOrWhiteSpace(doc.Rev)) return;
+
+            st.Lock.EnterWriteLock();
+            try
+            {
+                // Завести карту ревизий, если её ещё нет
+                if (!st.Revs.TryGetValue(doc.Id, out var revMap))
+                {
+                    revMap = new SortedDictionary<string, string>(StringComparer.Ordinal);
+                    st.Revs[doc.Id] = revMap;
+                }
+
+                // Если есть текущая голова и она была проиндексирована — снять её из индексов (мы импортируем "как есть")
+                Document? oldHeadDoc = null;
+                if (setAsHead && st.Heads.TryGetValue(doc.Id, out var head)
+                    && st.Revs.TryGetValue(doc.Id, out var oldMap)
+                    && oldMap.TryGetValue(head.Rev, out var oldJson))
+                {
+                    oldHeadDoc = JsonSerializer.Deserialize<Document>(oldJson, JsonUtil.JsonOpts);
+                }
+
+                if (oldHeadDoc != null) Indexer.Unindex(st, oldHeadDoc);
+
+                // Сохранить ревизию "как есть"
+                var json = JsonSerializer.Serialize(doc, JsonUtil.JsonOpts);
+                revMap[doc.Rev] = json;
+
+                if (setAsHead)
+                    st.Heads[doc.Id] = new Head { Rev = doc.Rev, Deleted = doc.Deleted };
+
+                // Проиндексировать, если документ "живой"
+                if (reindex && !doc.Deleted)
+                    Indexer.Index(st, doc);
+
+                if (bumpSeq)
+                    st.Seq++;
+            }
+            finally { st.Lock.ExitWriteLock(); }
+        }
+
+        /// <summary>
+        /// Экспорт всех «голов» (по умолчанию без удалённых) — удобно для снапшота.
+        /// </summary>
+        public IReadOnlyList<Document> ExportAll(string db, bool includeDeleted = false)
+        {
+            var list = new List<Document>(capacity: 1024);
+            if (!TryGetDb(db, out var st)) return list;
+
+            st.Lock.EnterReadLock();
+            try
+            {
+                foreach (var kv in st.Heads)
+                {
+                    var id = kv.Key;
+                    var head = kv.Value;
+                    if (!includeDeleted && head.Deleted) continue;
+
+                    if (!st.Revs.TryGetValue(id, out var revMap)) continue;
+                    if (!revMap.TryGetValue(head.Rev, out var json)) continue;
+
+                    var doc = JsonSerializer.Deserialize<Document>(json, JsonUtil.JsonOpts)!;
+                    list.Add(doc);
+                }
+            }
+            finally { st.Lock.ExitReadLock(); }
+
+            return list;
+        }
+        public IEnumerable<string> ListDbs()
+        {
+            lock (_dbs) return _dbs.Keys.ToList();
+        }
+
+        public StatsDto Stats(string db)
+        {
+            var dto = new StatsDto { Db = db };
+            if (!TryGetDb(db, out var st)) return dto;
+            st.Lock.EnterReadLock();
+            try
+            {
+                dto.Seq = st.Seq;
+                dto.DocsTotal = st.Heads.Count;
+                dto.DocsAlive = st.Heads.Values.Count(h => !h.Deleted);
+                dto.DocsDeleted = dto.DocsTotal - dto.DocsAlive;
+                dto.EqIndexFields = st.EqIndex.Count;
+                dto.TagIndexCount = st.TagIndex.Count;
+                dto.FullTextTokens = st.FullText.Count;
+                return dto;
+            }
+            finally { st.Lock.ExitReadLock(); }
+        }
+
+        /// <summary>
+        /// Полная пересборка индексов для базы из актуальных «голов».
+        /// Быстро починяет индексы после «глухого» восстановления.
+        /// </summary>
+        public void RebuildIndexes(string db)
+        {
+            if (!TryGetDb(db, out var st)) return;
+
+            st.Lock.EnterWriteLock();
+            try
+            {
+                // Сбросить все индексы
+                st.EqIndex.Clear();
+                st.NumIndex.Clear();
+                st.TagIndex.Clear();
+                st.FullText.Clear();
+
+                // Проиндексировать заново все актуальные «головы»
+                foreach (var kv in st.Heads)
+                {
+                    var id = kv.Key;
+                    var head = kv.Value;
+                    if (head.Deleted) continue;
+
+                    if (!st.Revs.TryGetValue(id, out var revMap)) continue;
+                    if (!revMap.TryGetValue(head.Rev, out var json)) continue;
+
+                    var doc = JsonSerializer.Deserialize<Document>(json, JsonUtil.JsonOpts)!;
+                    Indexer.Index(st, doc);
+                }
+            }
+            finally { st.Lock.ExitWriteLock(); }
+        }
+
+        /// <summary>
+        /// Унифицированный адаптер: полнотекст в формате (ok, docs, error),
+        /// чтобы вызывать как _inner.FullText(db, q, limit, offset).
+        /// </summary>
+        public (bool Ok, IReadOnlyList<Document> Docs, string? Error) FullText(string db, string query, int limit = 50, int offset = 0)
+        {
+            try
+            {
+                var docs = FullTextSearch(db, query, skip: offset, limit: limit).ToList();
+                return (true, docs, null);
+            }
+            catch (Exception ex)
+            {
+                return (false, Array.Empty<Document>(), ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Унифицированный адаптер: Find в формате (ok, docs, error),
+        /// чтобы вызывать как _inner.Find(db, equals/диапазон, limit, offset).
+        /// </summary>
+        public (bool Ok, IReadOnlyList<Document> Docs, string? Error) Find(
+            string db,
+            IDictionary<string, string>? equals = null,
+            (string field, double? min, double? max)? numericRange = null,
+            int limit = 100,
+            int offset = 0)
+        {
+            try
+            {
+                var docs = FindByFields(db, equals, numericRange, skip: offset, limit: limit).ToList();
+                return (true, docs, null);
+            }
+            catch (Exception ex)
+            {
+                return (false, Array.Empty<Document>(), ex.Message);
+            }
         }
     }
 }
