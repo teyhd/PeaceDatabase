@@ -1,9 +1,21 @@
-﻿namespace PeaceDatabase.Core.Models;
+﻿using System.Collections.Generic;
 
-public class Document
+namespace PeaceDatabase.Core.Models
 {
-    public string Id { get; set; } = string.Empty;
-    public string Rev { get; set; } = string.Empty;
-    public bool Deleted { get; set; } = false;
-    public Dictionary<string, object?> Body { get; set; } = new();
+    /// <summary>
+    /// Документ (аналог CouchDB): ревизии, мягкое удаление, произвольные данные и индексация.
+    /// </summary>
+    public class Document
+    {
+        public string Id { get; set; } = string.Empty; // "_id"
+        public string? Rev { get; set; }               // "_rev"
+        public bool Deleted { get; set; }              // "_deleted"
+        // Поля для равенств/диапазонов:
+        public Dictionary<string, object>? Data { get; set; }
+        // Мета-теги:
+        public List<string>? Tags { get; set; }
+
+        // Полнотекстовый контент:
+        public string? Content { get; set; }
+    }
 }

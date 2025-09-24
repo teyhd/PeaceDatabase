@@ -3,20 +3,24 @@ using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Mvc;
 using PeaceDatabase.Core.Models;
 using PeaceDatabase.Core.Services;
-/*
+
 namespace PeaceDatabase.WebApi.Controllers;
 
-// -----------------------------
+// ===============================
 // Управление БД
-// -----------------------------
+// ===============================
 [ApiController]
-[Route("v1")]
-public class DbController : ControllerBase
+[Route("v1/db")]
+public class DbApiController : ControllerBase
 {
     private readonly IDocumentService _svc;
-    public DbController(IDocumentService svc) => _svc = svc;
 
-    // HEAD /v1/{db} — проверка/создание (идемпотентно)
+    public DbApiController(IDocumentService svc)
+    {
+        _svc = svc ?? throw new ArgumentNullException(nameof(svc));
+    }
+
+    // HEAD /v1/db/{db}
     [HttpHead("{db}")]
     public IActionResult HeadDb([FromRoute] string db)
     {
@@ -25,7 +29,7 @@ public class DbController : ControllerBase
         return NoContent();
     }
 
-    // PUT /v1/{db} — создать БД (идемпотентно)
+    // PUT /v1/db/{db}
     [HttpPut("{db}")]
     public IActionResult CreateDb([FromRoute] string db)
     {
@@ -34,7 +38,7 @@ public class DbController : ControllerBase
         return Ok(new { ok = true, db });
     }
 
-    // DELETE /v1/{db} — удалить БД
+    // DELETE /v1/db/{db}
     [HttpDelete("{db}")]
     public IActionResult DeleteDb([FromRoute] string db)
     {
@@ -49,19 +53,15 @@ public class DbController : ControllerBase
         return Ok(new { ok = true, db });
     }
 
-    // GET /v1/{db}/_all_docs?skip=&limit=&includeDeleted=
+    // GET /v1/db/{db}/_all_docs?skip=&limit=&includeDeleted=
     [HttpGet("{db}/_all_docs")]
-    public IActionResult AllDocs(
-        [FromRoute] string db,
-        [FromQuery] int? skip,
-        [FromQuery] int? limit,
-        [FromQuery] bool? includeDeleted)
+    public IActionResult AllDocs([FromRoute] string db, [FromQuery] int? skip, [FromQuery] int? limit, [FromQuery] bool? includeDeleted)
     {
         var docs = _svc.AllDocs(db, skip ?? 0, limit ?? 100, includeDeleted ?? true);
         return Ok(new { total = docs?.Count() ?? 0, items = docs });
     }
 
-    // GET /v1/{db}/_seq — текущая последовательность изменений
+    // GET /v1/db/{db}/_seq
     [HttpGet("{db}/_seq")]
     public IActionResult Seq([FromRoute] string db)
     {
@@ -69,10 +69,10 @@ public class DbController : ControllerBase
         return Ok(new { db, seq });
     }
 
-    // -------- Поиск по полям (равенства + числовой диапазон) --------
-    // POST /v1/{db}/_find/fields
+    // ---- Поиск по полям ----
     public sealed class FindByFieldsRequest
     {
+        // Переименовано, чтобы не скрывать object.Equals
         public Dictionary<string, string>? EqualsMap { get; set; }
         public string? NumericField { get; set; }
         public double? Min { get; set; }
@@ -81,6 +81,7 @@ public class DbController : ControllerBase
         public int? Limit { get; set; }
     }
 
+    // POST /v1/db/{db}/_find/fields
     [HttpPost("{db}/_find/fields")]
     public IActionResult FindByFields([FromRoute] string db, [FromBody, Required] FindByFieldsRequest req)
     {
@@ -88,18 +89,11 @@ public class DbController : ControllerBase
         if (!string.IsNullOrWhiteSpace(req.NumericField))
             range = (req.NumericField!, req.Min, req.Max);
 
-        var docs = _svc.FindByFields(
-            db,
-            equals: req.EqualsMap,
-            numericRange: range,
-            skip: req.Skip ?? 0,
-            limit: req.Limit ?? 100);
-
+        var docs = _svc.FindByFields(db, equals: req.EqualsMap, numericRange: range, skip: req.Skip ?? 0, limit: req.Limit ?? 100);
         return Ok(new { total = docs?.Count() ?? 0, items = docs });
     }
 
-    // -------- Поиск по тегам (allOf / anyOf / noneOf) --------
-    // POST /v1/{db}/_find/tags
+    // ---- Поиск по тегам ----
     public sealed class FindByTagsRequest
     {
         public IEnumerable<string>? AllOf { get; set; }
@@ -109,45 +103,39 @@ public class DbController : ControllerBase
         public int? Limit { get; set; }
     }
 
+    // POST /v1/db/{db}/_find/tags
     [HttpPost("{db}/_find/tags")]
     public IActionResult FindByTags([FromRoute] string db, [FromBody, Required] FindByTagsRequest req)
     {
-        var docs = _svc.FindByTags(
-            db,
-            allOf: req.AllOf,
-            anyOf: req.AnyOf,
-            noneOf: req.NoneOf,
-            skip: req.Skip ?? 0,
-            limit: req.Limit ?? 100);
-
+        var docs = _svc.FindByTags(db, allOf: req.AllOf, anyOf: req.AnyOf, noneOf: req.NoneOf, skip: req.Skip ?? 0, limit: req.Limit ?? 100);
         return Ok(new { total = docs?.Count() ?? 0, items = docs });
     }
 
-    // -------- Полнотекстовый поиск --------
-    // GET /v1/{db}/_search?q=...&skip=&limit=
+    // ---- Полнотекст ----
+    // GET /v1/db/{db}/_search?q=...&skip=&limit=
     [HttpGet("{db}/_search")]
-    public IActionResult FullText(
-        [FromRoute] string db,
-        [FromQuery, Required] string q,
-        [FromQuery] int? skip,
-        [FromQuery] int? limit)
+    public IActionResult FullText([FromRoute] string db, [FromQuery, Required] string q, [FromQuery] int? skip, [FromQuery] int? limit)
     {
         var docs = _svc.FullTextSearch(db, q, skip ?? 0, limit ?? 100);
         return Ok(new { total = docs?.Count() ?? 0, items = docs });
     }
 }
 
-// -----------------------------
+// ===============================
 // Документы
-// -----------------------------
+// ===============================
 [ApiController]
-[Route("v1/{db}")]
-public class DocumentsController : ControllerBase
+[Route("v1/db/{db}/docs")]
+public class DocsApiController : ControllerBase
 {
     private readonly IDocumentService _svc;
-    public DocumentsController(IDocumentService svc) => _svc = svc;
 
-    // GET /v1/{db}/{id}?rev=
+    public DocsApiController(IDocumentService svc)
+    {
+        _svc = svc ?? throw new ArgumentNullException(nameof(svc));
+    }
+
+    // GET /v1/db/{db}/docs/{id}?rev=
     [HttpGet("{id}")]
     public IActionResult Get([FromRoute] string db, [FromRoute] string id, [FromQuery] string? rev = null)
     {
@@ -157,20 +145,17 @@ public class DocumentsController : ControllerBase
         return Ok(doc);
     }
 
-    // PUT /v1/{db}/{id} — upsert по _id
-    // Принимаем целиком Document, чтобы не гадать про его поля.
+    // PUT /v1/db/{db}/docs/{id}
     [HttpPut("{id}")]
     public IActionResult Put([FromRoute] string db, [FromRoute] string id, [FromBody, Required] Document body)
     {
-        // Если у модели есть Id — проверим совпадение; если нет — не валидируем.
+        // Синхронизация _id в теле с route id (если свойство есть)
         var idProp = body.GetType().GetProperty("Id");
-        var currentId = idProp?.GetValue(body)?.ToString();
+        var bodyId = idProp?.GetValue(body)?.ToString();
+        if (bodyId != null && !string.Equals(bodyId, id, StringComparison.Ordinal))
+            return BadRequest(new { ok = false, error = "_id in body must equal route id", routeId = id, bodyId });
 
-        if (currentId != null && !string.Equals(currentId, id, StringComparison.Ordinal))
-            return BadRequest(new { ok = false, error = "_id in body must equal route id", routeId = id, bodyId = currentId });
-
-        // Если Id в теле отсутствует — попробуем проставить его (если свойство есть и set доступен)
-        if (currentId == null && idProp?.CanWrite == true)
+        if (bodyId == null && idProp?.CanWrite == true)
             idProp.SetValue(body, id);
 
         var res = _svc.Put(db, body);
@@ -188,24 +173,21 @@ public class DocumentsController : ControllerBase
         return Ok(res.Doc);
     }
 
-    // POST /v1/{db} — создать документ (auto-id на стороне сервиса)
+    // POST /v1/db/{db}/docs
     [HttpPost]
     public IActionResult Post([FromRoute] string db, [FromBody, Required] Document body)
     {
         var res = _svc.Post(db, body);
-        if (!res.Ok)
-            return Problem(res.Error ?? "post failed", statusCode: 500);
-
-        if (res.Doc == null)
-            return Problem("post returned null document", statusCode: 500);
+        if (!res.Ok) return Problem(res.Error ?? "post failed", statusCode: 500);
+        if (res.Doc == null) return Problem("post returned null document", statusCode: 500);
 
         var idProp = res.Doc.GetType().GetProperty("Id");
         var idVal = idProp?.GetValue(res.Doc)?.ToString();
-        var location = idVal != null ? $"/v1/{db}/{idVal}" : $"/v1/{db}";
+        var location = idVal != null ? $"/v1/db/{db}/docs/{idVal}" : $"/v1/db/{db}/docs";
         return Created(location, res.Doc);
     }
 
-    // DELETE /v1/{db}/{id}?rev= — rev обязателен (интерфейс принимает non-null)
+    // DELETE /v1/db/{db}/docs/{id}?rev=
     [HttpDelete("{id}")]
     public IActionResult Delete([FromRoute] string db, [FromRoute] string id, [FromQuery] string? rev)
     {
@@ -226,4 +208,3 @@ public class DocumentsController : ControllerBase
         return Ok(new { ok = true, id, rev });
     }
 }
-*/
