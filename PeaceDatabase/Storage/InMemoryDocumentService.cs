@@ -34,12 +34,17 @@ namespace PeaceDatabase.Storage.InMemory
         {
             lock (_dbs)
             {
-                if (!_dbs.TryGetValue(db, out var state)) return (false, "Database not found");
+                if (!_dbs.TryGetValue(db, out var state))
+                {
+                    // сделать идемпотентным: окей, «и так нет»
+                    return (true, null);
+                }
                 _dbs.Remove(db);
                 state.Lock.Dispose();
             }
             return (true, null);
         }
+
 
         private bool TryGetDb(string db, out DbState state)
         {
@@ -57,7 +62,9 @@ namespace PeaceDatabase.Storage.InMemory
                 var targetRev = rev ?? head.Rev;
                 if (!st.Revs.TryGetValue(id, out var revMap)) return null;
                 if (!revMap.TryGetValue(targetRev, out var json)) return null;
-                return JsonSerializer.Deserialize<Document>(json, JsonUtil.JsonOpts)!;
+
+                var doc = JsonSerializer.Deserialize<Document>(json, JsonUtil.JsonOpts)!;
+                return doc.Deleted ? null : doc; // <-- скрываем удалённые
             }
             finally { st.Lock.ExitReadLock(); }
         }
@@ -221,38 +228,92 @@ namespace PeaceDatabase.Storage.InMemory
             st.Lock.EnterReadLock();
             try
             {
+                // Базовая вселенная: все не удалённые ids
+                HashSet<string> universe = new(st.Heads.Count, StringComparer.Ordinal);
+                foreach (var kv in st.Heads)
+                    if (!kv.Value.Deleted) universe.Add(kv.Key);
+
                 HashSet<string>? acc = null;
 
-                // equals: пересечение
+                // ---- equals: пересечение по каждому полю
                 if (equals != null && equals.Count > 0)
                 {
-                    foreach (var (field, val) in equals)
+                    foreach (var (field, want) in equals)
                     {
-                        if (!st.EqIndex.TryGetValue(field, out var byVal) || !byVal.TryGetValue(val, out var set))
+                        // 1) Пытаемся через индекс равенств
+                        HashSet<string>? byIdx = null;
+                        if (st.EqIndex.TryGetValue(field, out var byVal) && byVal.TryGetValue(want, out var setEq))
                         {
-                            acc = new HashSet<string>(); break;
+                            byIdx = new HashSet<string>(setEq, StringComparer.Ordinal);
                         }
-                        acc = acc == null ? new HashSet<string>(set, StringComparer.Ordinal)
-                                          : Intersect(acc, set);
+                        else
+                        {
+                            // 2) Фолбэк: линейный фильтр по текущей "вселенной"/кандидатам
+                            var scanBase = acc ?? universe;
+                            byIdx = new HashSet<string>(StringComparer.Ordinal);
+                            foreach (var id in scanBase)
+                            {
+                                if (!st.Heads.TryGetValue(id, out var head)) continue;
+                                if (!st.Revs.TryGetValue(id, out var revMap)) continue;
+                                if (!revMap.TryGetValue(head.Rev, out var json)) continue;
+
+                                var doc = JsonSerializer.Deserialize<Document>(json, JsonUtil.JsonOpts)!;
+                                if (doc.Data != null && doc.Data.TryGetValue(field, out var val))
+                                {
+                                    // сравнение как строк — нормализуем обе стороны
+                                    var s = Indexing.Indexer.IndexerString(val);
+                                    if (string.Equals(s, want, StringComparison.Ordinal))
+                                        byIdx.Add(id);
+                                }
+                            }
+                        }
+
+                        acc = acc == null ? byIdx : Intersect(acc, byIdx);
                         if (acc.Count == 0) break;
                     }
                 }
 
-                // numericRange: один диапазон
+                // ---- numericRange: пересечение с диапазоном
                 if (numericRange.HasValue)
                 {
                     var (field, min, max) = numericRange.Value;
-                    var ids = new HashSet<string>(StringComparer.Ordinal);
+
+                    // 1) через числовой индекс
+                    HashSet<string>? byNum = null;
                     if (st.NumIndex.TryGetValue(field, out var tree))
                     {
-                        foreach (var (val, set) in tree)
+                        byNum = new HashSet<string>(StringComparer.Ordinal);
+                        foreach (var kv in tree)
                         {
+                            var val = kv.Key;
                             if (min.HasValue && val < min.Value) continue;
                             if (max.HasValue && val > max.Value) break;
-                            foreach (var id in set) ids.Add(id);
+                            foreach (var id in kv.Value) byNum.Add(id);
                         }
                     }
-                    acc = acc == null ? ids : Intersect(acc, ids);
+                    else
+                    {
+                        // 2) фолбэк сканом
+                        var scanBase = acc ?? universe;
+                        byNum = new HashSet<string>(StringComparer.Ordinal);
+                        foreach (var id in scanBase)
+                        {
+                            if (!st.Heads.TryGetValue(id, out var head)) continue;
+                            if (!st.Revs.TryGetValue(id, out var revMap)) continue;
+                            if (!revMap.TryGetValue(head.Rev, out var json)) continue;
+
+                            var doc = JsonSerializer.Deserialize<Document>(json, JsonUtil.JsonOpts)!;
+                            if (doc.Data != null && doc.Data.TryGetValue(field, out var raw) &&
+                                Indexing.Indexer.TryToDouble(raw, out var num))
+                            {
+                                if (min.HasValue && num < min.Value) continue;
+                                if (max.HasValue && num > max.Value) continue;
+                                byNum.Add(id);
+                            }
+                        }
+                    }
+
+                    acc = acc == null ? byNum : Intersect(acc, byNum);
                 }
 
                 return Materialize(st, acc, skip, limit);

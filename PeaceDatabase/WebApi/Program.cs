@@ -47,10 +47,14 @@ builder.Services.AddCors(opt =>
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+
 // ---------- Метрики ----------
 var meter = new Meter("PeaceDatabase.WebApi", "1.0.0");
 var reqCounter = meter.CreateCounter<long>("http.requests.total", unit: "count", description: "Total HTTP requests");
 var reqDuration = meter.CreateHistogram<double>("http.requests.duration.ms", unit: "ms", description: "HTTP request duration");
+
+// ADD: совместимость с тестами
+var requestsTotal = 0L;
 
 // ---------- Build ----------
 var app = builder.Build();
@@ -83,14 +87,13 @@ app.Use(async (context, next) =>
     var sw = Stopwatch.StartNew();
     var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
 
+    // счетчики
+    Interlocked.Increment(ref requestsTotal);
     reqCounter.Add(1,
         new KeyValuePair<string, object?>("method", context.Request.Method),
         new KeyValuePair<string, object?>("path", context.Request.Path.Value ?? string.Empty));
 
-    try
-    {
-        await next();
-    }
+    try { await next(); }
     finally
     {
         sw.Stop();
@@ -101,8 +104,7 @@ app.Use(async (context, next) =>
             new KeyValuePair<string, object?>("path", context.Request.Path.Value ?? string.Empty),
             new KeyValuePair<string, object?>("status", context.Response.StatusCode));
 
-        logger.LogInformation(
-            "HTTP {Method} {Path} -> {Status} in {Elapsed:0.0} ms",
+        logger.LogInformation("HTTP {Method} {Path} -> {Status} in {Elapsed:0.0} ms",
             context.Request.Method, context.Request.Path.Value, context.Response.StatusCode, elapsedMs);
     }
 });
@@ -120,10 +122,12 @@ app.MapHealthChecks("/healthz");
 // Лёгкая служебная сводка
 app.MapGet("/v1/_stats", () => Results.Ok(new
 {
+    requestsTotal,                // <= ожидается тестом
     service = "PeaceDatabase.WebApi",
     version = "1.0.0",
     timeUtc = DateTime.UtcNow
 }));
+
 
 // ------------------------------------------------------------
 // 1) Подробная схема по данным ApiExplorer (Controllers/Actions)

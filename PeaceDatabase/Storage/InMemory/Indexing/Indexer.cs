@@ -1,8 +1,10 @@
-﻿using System.Collections.Generic;
+﻿using PeaceDatabase.Core.Models;
+using PeaceDatabase.Storage.InMemory.Internals;
+using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text.Json;
-using PeaceDatabase.Core.Models;
-using PeaceDatabase.Storage.InMemory.Internals;
+
 
 namespace PeaceDatabase.Storage.InMemory.Indexing
 {
@@ -138,12 +140,68 @@ namespace PeaceDatabase.Storage.InMemory.Indexing
         }
 
         // --- helpers ---
-        private static void AddToken(DbState st, string tok, string id)
+
+        internal static bool TryToDouble(object val, out double num)
+            {
+                switch (val)
+                {
+                    case JsonElement je:
+                        switch (je.ValueKind)
+                        {
+                            case JsonValueKind.Number:
+                                if (je.TryGetDouble(out num)) return true;
+                                break;
+                            case JsonValueKind.String:
+                                if (double.TryParse(je.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out num))
+                                    return true;
+                                break;
+                        }
+                        num = 0; return false;
+
+                    case byte b: num = b; return true;
+                    case sbyte sb: num = sb; return true;
+                    case short s: num = s; return true;
+                    case ushort us: num = us; return true;
+                    case int i: num = i; return true;
+                    case uint ui: num = ui; return true;
+                    case long l: num = l; return true;
+                    case ulong ul: num = ul; return true;
+                    case float f: num = f; return true;
+                    case double d: num = d; return true;
+                    case decimal dec: num = (double)dec; return true;
+                    case string str when double.TryParse(str, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed):
+                        num = parsed; return true;
+                    default:
+                        num = 0; return false;
+                }
+            }
+
+        internal static string IndexerString(object val)
         {
-            if (!st.FullText.TryGetValue(tok, out var set))
-                st.FullText[tok] = set = new HashSet<string>(System.StringComparer.Ordinal);
-            set.Add(id);
+            return val switch
+            {
+                null => string.Empty,
+                JsonElement je => je.ValueKind switch
+                {
+                    JsonValueKind.String => je.GetString() ?? string.Empty,
+                    JsonValueKind.Number => je.ToString(),
+                    JsonValueKind.True => "true",
+                    JsonValueKind.False => "false",
+                    _ => je.ToString()
+                },
+                string s => s,
+                bool b => b ? "true" : "false",
+                IFormattable f => f.ToString(null, CultureInfo.InvariantCulture) ?? string.Empty,
+                _ => val.ToString() ?? string.Empty
+            };
         }
+
+        private static void AddToken(DbState st, string tok, string id)
+            {
+                if (!st.FullText.TryGetValue(tok, out var set))
+                    st.FullText[tok] = set = new HashSet<string>(System.StringComparer.Ordinal);
+                set.Add(id);
+            }
 
         private static void RemoveToken(DbState st, string tok, string id)
         {
