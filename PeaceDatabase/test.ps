@@ -1,0 +1,147 @@
+﻿# =======================
+# Параметры
+# =======================
+$Base = "http://localhost:5000"   # замени, если у тебя другой порт
+$Db   = "fs_test"
+
+# Хелпер для красивого вывода
+function Show($title, $data) {
+  Write-Host "`n=== $title ===" -ForegroundColor Cyan
+  $data | ConvertTo-Json -Depth 10
+}
+
+# =======================
+# 0) Проверим режим хранилища и где лежат файлы
+# =======================
+$storage = Invoke-RestMethod -Method GET "$Base/v1/_storage/info"
+Show "Storage info" $storage
+if ($storage.mode -ne "File") {
+  Write-Host "ВНИМАНИЕ: сейчас режим '$($storage.mode)'. Для записи на диск включи File-режим через appsettings.json (Storage.Mode=File)." -ForegroundColor Yellow
+}
+
+# =======================
+# 1) Создать БД
+# =======================
+$resp = Invoke-RestMethod -Method PUT "$Base/v1/db/$Db"
+Show "Create DB" $resp
+
+# =======================
+# 2) Загрузка (создание) документов
+# =======================
+$doc1 = @{
+  id   = "doc-1"
+  data = @{
+    name = "Alpha"
+    subject = "math"
+    tags = @("demo","alpha")
+    text = "Alpha document about discrete math and graphs"
+  }
+}
+$doc2 = @{
+  id   = "doc-2"
+  data = @{
+    name = "Beta"
+    subject = "physics"
+    tags = @("demo","beta")
+    text = "Beta note on quantum physics and particles"
+  }
+}
+
+$created1 = Invoke-RestMethod -Method POST "$Base/v1/db/$Db/docs" -ContentType "application/json" -Body ($doc1 | ConvertTo-Json -Depth 10)
+$created2 = Invoke-RestMethod -Method POST "$Base/v1/db/$Db/docs" -ContentType "application/json" -Body ($doc2 | ConvertTo-Json -Depth 10)
+Show "POST doc-1" $created1
+Show "POST doc-2" $created2
+
+# =======================
+# 3) Чтение по id
+# =======================
+$get1 = Invoke-RestMethod -Method GET "$Base/v1/db/$Db/docs/doc-1"
+Show "GET doc-1" $get1
+
+# =======================
+# 4) Обновление (сохранение)
+#    Нужно передать актуальный _rev (мы только что прочитали его в $get1)
+# =======================
+$update = @{
+  id   = "doc-1"
+  rev  = $get1.rev
+  data = @{
+    name = "Alpha v2"
+    subject = "math"
+    tags = @("demo","alpha","updated")
+    text = "Alpha document, updated about graph theory and combinatorics"
+  }
+}
+$put1 = Invoke-RestMethod -Method PUT "$Base/v1/db/$Db/docs/doc-1" -ContentType "application/json" -Body ($update | ConvertTo-Json -Depth 10)
+Show "PUT doc-1 (update)" $put1
+
+# =======================
+# 5) Список всех документов
+# =======================
+$all = Invoke-RestMethod -Method GET "$Base/v1/db/$Db/_all_docs?skip=0&limit=100&includeDeleted=true"
+Show "_all_docs" $all
+
+# =======================
+# 6) Поиск по полям (EqualsMap + числовые диапазоны при необходимости)
+#    Пример: ищем subject=math
+# =======================
+$findFieldsReq = @{
+  equalsMap    = @{ subject = "math" }
+  numericField = $null
+  min          = $null
+  max          = $null
+  skip         = 0
+  limit        = 100
+}
+$findFields = Invoke-RestMethod -Method POST "$Base/v1/db/$Db/_find/fields" -ContentType "application/json" -Body ($findFieldsReq | ConvertTo-Json -Depth 10)
+Show "Find by fields (subject=math)" $findFields
+
+# =======================
+# 7) Поиск по тегам (allOf/anyOf/noneOf)
+# =======================
+$findTagsReq = @{
+  allOf = @("demo")
+  anyOf = @("updated")
+  noneOf = @()
+  skip = 0
+  limit = 100
+}
+$findTags = Invoke-RestMethod -Method POST "$Base/v1/db/$Db/_find/tags" -ContentType "application/json" -Body ($findTagsReq | ConvertTo-Json -Depth 10)
+Show "Find by tags (demo AND updated)" $findTags
+
+# =======================
+# 8) Полнотекстовый поиск
+#    Примеры: "graph", "quantum", "combinatorics"
+# =======================
+$ft1 = Invoke-RestMethod -Method GET "$Base/v1/db/$Db/_search?q=graph&skip=0&limit=50"
+Show "FullText 'graph'" $ft1
+
+$ft2 = Invoke-RestMethod -Method GET "$Base/v1/db/$Db/_search?q=quantum&skip=0&limit=50"
+Show "FullText 'quantum'" $ft2
+
+# =======================
+# 9) Seq и служебная сводка
+# =======================
+$seq = Invoke-RestMethod -Method GET "$Base/v1/db/$Db/_seq"
+Show "Seq" $seq
+
+$stats = Invoke-RestMethod -Method GET "$Base/v1/_stats"
+Show "_stats" $stats
+
+# =======================
+# 10) Путь к каталогу БД (для открытия в Проводнике)
+# =======================
+$dirInfo = Invoke-RestMethod -Method GET "$Base/v1/_storage/dir/$Db"
+Show "Storage dir" $dirInfo
+
+if ($dirInfo.exists -eq $true) {
+  if ($env:OS -like "*Windows*") {
+    Start-Process explorer.exe "`"$($dirInfo.dir)`""
+  } elseif ($IsMacOS) {
+    & open "$($dirInfo.dir)"
+  } else {
+    & xdg-open "$($dirInfo.dir)"
+  }
+} else {
+  Write-Host "Каталог БД не найден. Убедись, что включён File-режим (Storage.Mode=File) и были операции записи." -ForegroundColor Yellow
+}
