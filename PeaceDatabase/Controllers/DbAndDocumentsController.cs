@@ -149,12 +149,10 @@ public class DocsApiController : ControllerBase
     [HttpPut("{id}")]
     public IActionResult Put([FromRoute] string db, [FromRoute] string id, [FromBody, Required] Document body)
     {
-        // Синхронизация _id в теле с route id (если свойство есть)
         var idProp = body.GetType().GetProperty("Id");
         var bodyId = idProp?.GetValue(body)?.ToString();
         if (bodyId != null && !string.Equals(bodyId, id, StringComparison.Ordinal))
             return BadRequest(new { ok = false, error = "_id in body must equal route id", routeId = id, bodyId });
-
         if (bodyId == null && idProp?.CanWrite == true)
             idProp.SetValue(body, id);
 
