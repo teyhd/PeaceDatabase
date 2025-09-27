@@ -1,3 +1,5 @@
+using Xunit;
+
 namespace PeaceDatabase.Tests
 {
     public class UnitTest1

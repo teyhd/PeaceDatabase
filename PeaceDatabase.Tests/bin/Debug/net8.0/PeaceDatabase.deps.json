@@ -8,24 +8,45 @@
     ".NETCoreApp,Version=v8.0": {
       "PeaceDatabase/1.0.0": {
         "dependencies": {
-          "FluentAssertions": "8.6.0",
+          "Microsoft.Extensions.Configuration.Binder": "9.0.0",
           "Microsoft.VisualStudio.Azure.Containers.Tools.Targets": "1.22.1",
-          "Swashbuckle.AspNetCore": "6.6.2",
-          "xunit.abstractions": "2.0.3"
+          "Swashbuckle.AspNetCore": "6.6.2"
         },
         "runtime": {
           "PeaceDatabase.dll": {}
         }
       },
-      "FluentAssertions/8.6.0": {
+      "Microsoft.Extensions.ApiDescription.Server/6.0.5": {},
+      "Microsoft.Extensions.Configuration.Abstractions/9.0.0": {
+        "dependencies": {
+          "Microsoft.Extensions.Primitives": "9.0.0"
+        },
         "runtime": {
-          "lib/net6.0/FluentAssertions.dll": {
-            "assemblyVersion": "8.6.0.0",
-            "fileVersion": "8.6.0.0"
+          "lib/net8.0/Microsoft.Extensions.Configuration.Abstractions.dll": {
+            "assemblyVersion": "9.0.0.0",
+            "fileVersion": "9.0.24.52809"
           }
         }
       },
-      "Microsoft.Extensions.ApiDescription.Server/6.0.5": {},
+      "Microsoft.Extensions.Configuration.Binder/9.0.0": {
+        "dependencies": {
+          "Microsoft.Extensions.Configuration.Abstractions": "9.0.0"
+        },
+        "runtime": {
+          "lib/net8.0/Microsoft.Extensions.Configuration.Binder.dll": {
+            "assemblyVersion": "9.0.0.0",
+            "fileVersion": "9.0.24.52809"
+          }
+        }
+      },
+      "Microsoft.Extensions.Primitives/9.0.0": {
+        "runtime": {
+          "lib/net8.0/Microsoft.Extensions.Primitives.dll": {
+            "assemblyVersion": "9.0.0.0",
+            "fileVersion": "9.0.24.52809"
+          }
+        }
+      },
       "Microsoft.OpenApi/1.6.14": {
         "runtime": {
           "lib/netstandard2.0/Microsoft.OpenApi.dll": {
@@ -72,14 +93,6 @@
             "fileVersion": "6.6.2.401"
           }
         }
-      },
-      "xunit.abstractions/2.0.3": {
-        "runtime": {
-          "lib/netstandard2.0/xunit.abstractions.dll": {
-            "assemblyVersion": "2.0.0.0",
-            "fileVersion": "2.0.0.0"
-          }
-        }
       }
     }
   },
@@ -89,19 +102,33 @@
       "serviceable": false,
       "sha512": ""
     },
-    "FluentAssertions/8.6.0": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-h5tb0odkLRWuwjc5EhwHQZpZm7+5YmJBNn379tJPIK04FOv3tuOfhGZTPFSuj/MTgzfV6UlAjfbSEBcEGhGucQ==",
-      "path": "fluentassertions/8.6.0",
-      "hashPath": "fluentassertions.8.6.0.nupkg.sha512"
-    },
     "Microsoft.Extensions.ApiDescription.Server/6.0.5": {
       "type": "package",
       "serviceable": true,
       "sha512": "sha512-Ckb5EDBUNJdFWyajfXzUIMRkhf52fHZOQuuZg/oiu8y7zDCVwD0iHhew6MnThjHmevanpxL3f5ci2TtHQEN6bw==",
       "path": "microsoft.extensions.apidescription.server/6.0.5",
       "hashPath": "microsoft.extensions.apidescription.server.6.0.5.nupkg.sha512"
+    },
+    "Microsoft.Extensions.Configuration.Abstractions/9.0.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-lqvd7W3FGKUO1+ZoUEMaZ5XDJeWvjpy2/M/ptCGz3tXLD4HWVaSzjufsAsjemasBEg+2SxXVtYVvGt5r2nKDlg==",
+      "path": "microsoft.extensions.configuration.abstractions/9.0.0",
+      "hashPath": "microsoft.extensions.configuration.abstractions.9.0.0.nupkg.sha512"
+    },
+    "Microsoft.Extensions.Configuration.Binder/9.0.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-RiScL99DcyngY9zJA2ROrri7Br8tn5N4hP4YNvGdTN/bvg1A3dwvDOxHnNZ3Im7x2SJ5i4LkX1uPiR/MfSFBLQ==",
+      "path": "microsoft.extensions.configuration.binder/9.0.0",
+      "hashPath": "microsoft.extensions.configuration.binder.9.0.0.nupkg.sha512"
+    },
+    "Microsoft.Extensions.Primitives/9.0.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-N3qEBzmLMYiASUlKxxFIISP4AiwuPTHF5uCh+2CWSwwzAJiIYx0kBJsS30cp1nvhSySFAVi30jecD307jV+8Kg==",
+      "path": "microsoft.extensions.primitives/9.0.0",
+      "hashPath": "microsoft.extensions.primitives.9.0.0.nupkg.sha512"
     },
     "Microsoft.OpenApi/1.6.14": {
       "type": "package",
@@ -144,13 +171,6 @@
       "sha512": "sha512-mBBb+/8Hm2Q3Wygag+hu2jj69tZW5psuv0vMRXY07Wy+Rrj40vRP8ZTbKBhs91r45/HXT4aY4z0iSBYx1h6JvA==",
       "path": "swashbuckle.aspnetcore.swaggerui/6.6.2",
       "hashPath": "swashbuckle.aspnetcore.swaggerui.6.6.2.nupkg.sha512"
-    },
-    "xunit.abstractions/2.0.3": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-pot1I4YOxlWjIb5jmwvvQNbTrZ3lJQ+jUGkGjWE3hEFM0l5gOnBWS+H3qsex68s5cO52g+44vpGzhAt+42vwKg==",
-      "path": "xunit.abstractions/2.0.3",
-      "hashPath": "xunit.abstractions.2.0.3.nupkg.sha512"
     }
   }
 }
