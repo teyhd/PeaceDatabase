@@ -1,33 +1,72 @@
-# If you prefer the allow list template instead of the deny list, see community template:
-# https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
-#
-# Binaries for programs and plugins
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
+# ---- .NET build ----
+bin/
+obj/
+[Bb]uild/
+[Ll]og/
+[Ll]ogs/
 
-# Test binary, built with `go test -c`
-*.test
-
-# Code coverage profiles and other test artifacts
-*.out
-coverage.*
-*.coverprofile
-profile.cov
-
-# Dependency directories (remove the comment below to include it)
-# vendor/
-
-# Go workspace file
-go.work
-go.work.sum
-
-# env file
-.env
-
-# Editor/IDE
-.idea/
-.vscode/
+# ---- VS/VSCode/Rider ----
 .vs/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# ---- Paket / NuGet ----
+*.nupkg
+*.snupkg
+*.nuspec
+*.psmdcp
+packages/
+*.deps.json
+*.dll
+*.exe
+*.db
+*.pdb
+*.cache
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# ---- Test results ----
+TestResults/
+*.coverage
+*.coveragexml
+*.trx
+
+# ---- OS generated ----
+[Tt]humbs.db
+ehthumbs.db
+[Dd]esktop.ini
+$RECYCLE.BIN/
+
+# ---- Logs & dumps ----
+*.log
+*.dmp
+
+# ---- Configs (если приватные) ----
+*.env
+*.local.json
+appsettings.Development.json
+secrets.json
+
+# ---- Rider / JetBrains ----
+.idea/
+*.iml
+
+# ---- VSCode ----
+.vscode/
+.history/
+*.code-workspace
+
+# ---- Temporary ----
+~$*
+*.tmp
+*.bak
+*.swp
+*.swo
+
+# ---- PeaceDatabase custom ----
+/PeaceDatabase.Storage.File/*.wal
+/PeaceDatabase.Storage.File/*.snapshot
