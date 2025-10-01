@@ -1,23 +1,23 @@
 {
   "format": 1,
   "restore": {
-    "D:\\_ITMOStudy\\_Master\\OPVP\\PeaceDatabase\\PeaceDatabase.Tests\\PeaceDatabase.Tests.csproj": {}
+    "C:\\Users\\mit\\Source\\Repos\\PeaceDatabase\\PeaceDatabase.Tests\\PeaceDatabase.Tests.csproj": {}
   },
   "projects": {
-    "D:\\_ITMOStudy\\_Master\\OPVP\\PeaceDatabase\\PeaceDatabase.Tests\\PeaceDatabase.Tests.csproj": {
+    "C:\\Users\\mit\\Source\\Repos\\PeaceDatabase\\PeaceDatabase.Tests\\PeaceDatabase.Tests.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "D:\\_ITMOStudy\\_Master\\OPVP\\PeaceDatabase\\PeaceDatabase.Tests\\PeaceDatabase.Tests.csproj",
+        "projectUniqueName": "C:\\Users\\mit\\Source\\Repos\\PeaceDatabase\\PeaceDatabase.Tests\\PeaceDatabase.Tests.csproj",
         "projectName": "PeaceDatabase.Tests",
-        "projectPath": "D:\\_ITMOStudy\\_Master\\OPVP\\PeaceDatabase\\PeaceDatabase.Tests\\PeaceDatabase.Tests.csproj",
-        "packagesPath": "C:\\Users\\admin\\.nuget\\packages\\",
-        "outputPath": "D:\\_ITMOStudy\\_Master\\OPVP\\PeaceDatabase\\PeaceDatabase.Tests\\obj\\",
+        "projectPath": "C:\\Users\\mit\\Source\\Repos\\PeaceDatabase\\PeaceDatabase.Tests\\PeaceDatabase.Tests.csproj",
+        "packagesPath": "C:\\Users\\mit\\.nuget\\packages\\",
+        "outputPath": "C:\\Users\\mit\\Source\\Repos\\PeaceDatabase\\PeaceDatabase.Tests\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
         ],
         "configFilePaths": [
-          "C:\\Users\\admin\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Users\\mit\\AppData\\Roaming\\NuGet\\NuGet.Config",
           "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
           "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
         ],
@@ -25,15 +25,14 @@
           "net8.0"
         ],
         "sources": {
-          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
           "https://api.nuget.org/v3/index.json": {}
         },
         "frameworks": {
           "net8.0": {
             "targetAlias": "net8.0",
             "projectReferences": {
-              "D:\\_ITMOStudy\\_Master\\OPVP\\PeaceDatabase\\PeaceDatabase\\PeaceDatabase.csproj": {
-                "projectPath": "D:\\_ITMOStudy\\_Master\\OPVP\\PeaceDatabase\\PeaceDatabase\\PeaceDatabase.csproj"
+              "C:\\Users\\mit\\Source\\Repos\\PeaceDatabase\\PeaceDatabase\\PeaceDatabase.csproj": {
+                "projectPath": "C:\\Users\\mit\\Source\\Repos\\PeaceDatabase\\PeaceDatabase\\PeaceDatabase.csproj"
               }
             }
           }
@@ -97,24 +96,24 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.305/PortableRuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.304/PortableRuntimeIdentifierGraph.json"
         }
       }
     },
-    "D:\\_ITMOStudy\\_Master\\OPVP\\PeaceDatabase\\PeaceDatabase\\PeaceDatabase.csproj": {
+    "C:\\Users\\mit\\Source\\Repos\\PeaceDatabase\\PeaceDatabase\\PeaceDatabase.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "D:\\_ITMOStudy\\_Master\\OPVP\\PeaceDatabase\\PeaceDatabase\\PeaceDatabase.csproj",
+        "projectUniqueName": "C:\\Users\\mit\\Source\\Repos\\PeaceDatabase\\PeaceDatabase\\PeaceDatabase.csproj",
         "projectName": "PeaceDatabase",
-        "projectPath": "D:\\_ITMOStudy\\_Master\\OPVP\\PeaceDatabase\\PeaceDatabase\\PeaceDatabase.csproj",
-        "packagesPath": "C:\\Users\\admin\\.nuget\\packages\\",
-        "outputPath": "D:\\_ITMOStudy\\_Master\\OPVP\\PeaceDatabase\\PeaceDatabase\\obj\\",
+        "projectPath": "C:\\Users\\mit\\Source\\Repos\\PeaceDatabase\\PeaceDatabase\\PeaceDatabase.csproj",
+        "packagesPath": "C:\\Users\\mit\\.nuget\\packages\\",
+        "outputPath": "C:\\Users\\mit\\Source\\Repos\\PeaceDatabase\\PeaceDatabase\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
         ],
         "configFilePaths": [
-          "C:\\Users\\admin\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Users\\mit\\AppData\\Roaming\\NuGet\\NuGet.Config",
           "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
           "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
         ],
@@ -122,7 +121,6 @@
           "net8.0"
         ],
         "sources": {
-          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
           "https://api.nuget.org/v3/index.json": {}
         },
         "frameworks": {
@@ -149,7 +147,7 @@
           "dependencies": {
             "Microsoft.Extensions.Configuration.Binder": {
               "target": "Package",
-              "version": "[8.0.8, )"
+              "version": "[9.0.0, )"
             },
             "Microsoft.VisualStudio.Azure.Containers.Tools.Targets": {
               "target": "Package",
@@ -179,7 +177,7 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.305/PortableRuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.304/PortableRuntimeIdentifierGraph.json"
         }
       }
     }

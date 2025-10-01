@@ -81,7 +81,7 @@ namespace PeaceDatabase.Tests.Storage
                 "indexing",
                 "token",
                 "bench performance",
-                "couch engines documents",
+                "engines documents",
                 "speed search",
                 "relevance",
                 "n-gram",
@@ -135,7 +135,7 @@ namespace PeaceDatabase.Tests.Storage
                 new Document {
                     Data = new Dictionary<string, object> {
                         ["title"]   = "Intro to Document Databases",
-                        ["content"] = "Couch-like engines store documents. Full-text indexing helps finding words quickly."
+                        ["content"] = "engines store documents. Full-text indexing helps finding words quickly."
                     }
                 },
                 new Document {

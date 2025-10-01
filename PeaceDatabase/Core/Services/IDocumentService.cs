@@ -3,9 +3,7 @@ using PeaceDatabase.Core.Models;
 
 namespace PeaceDatabase.Core.Services
 {
-    /// <summary>
-    /// Контракт для документной БД (упрощённый аналог API CouchDB).
-    /// </summary>
+
     public interface IDocumentService
     {
         // ---------- Управление базами ----------
