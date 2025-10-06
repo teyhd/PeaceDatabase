@@ -1,7 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Runtime.Serialization;
 
 namespace PeaceDatabase.WebApi.Exceptions;
 
@@ -31,24 +29,4 @@ public sealed class DomainValidationException : Exception
             : new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
     }
 
-#pragma warning disable SYSLIB0051 // Binary serialization is obsolete but kept for backwards compatibility.
-    [Obsolete("Serialization constructor is obsolete.", DiagnosticId = "SYSLIB0051")]
-    private DomainValidationException(SerializationInfo info, StreamingContext context)
-        : base(info, context)
-    {
-        Errors = (info.GetValue(nameof(Errors), typeof(Dictionary<string, string[]>)) as Dictionary<string, string[]>)
-                 ?? new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
-    }
-
-    [Obsolete("Serialization support is obsolete.", DiagnosticId = "SYSLIB0051")]
-    public override void GetObjectData(SerializationInfo info, StreamingContext context)
-    {
-        ArgumentNullException.ThrowIfNull(info);
-        var payload = Errors is Dictionary<string, string[]> dict
-            ? dict
-            : Errors.ToDictionary(k => k.Key, v => v.Value, StringComparer.OrdinalIgnoreCase);
-        info.AddValue(nameof(Errors), payload);
-        base.GetObjectData(info, context);
-    }
-#pragma warning restore SYSLIB0051
 }

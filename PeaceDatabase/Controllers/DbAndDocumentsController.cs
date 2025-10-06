@@ -86,6 +86,11 @@ public class DbApiController : ControllerBase
     [HttpPost("{db}/_find/fields")]
     public IActionResult FindByFields([FromRoute] string db, [FromBody, Required] FindByFieldsRequest req)
     {
+        if (req is null)
+        {
+            throw new ArgumentException("Request body is required.", nameof(req));
+        }
+
         (string field, double? min, double? max)? range = null;
         if (!string.IsNullOrWhiteSpace(req.NumericField))
             range = (req.NumericField!, req.Min, req.Max);

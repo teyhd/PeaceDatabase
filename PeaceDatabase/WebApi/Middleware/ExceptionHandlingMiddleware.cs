@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
@@ -27,7 +28,7 @@ public sealed class ExceptionHandlingMiddleware : IMiddleware
 
     private readonly ILogger<ExceptionHandlingMiddleware> _logger;
     private readonly ProblemDetailsFactory _problemDetailsFactory;
-    private readonly JsonSerializerOptions _serializerOptions;
+    private readonly JsonSerializerOptions _problemSerializerOptions;
 
     public ExceptionHandlingMiddleware(
         ILogger<ExceptionHandlingMiddleware> logger,
@@ -37,7 +38,12 @@ public sealed class ExceptionHandlingMiddleware : IMiddleware
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _problemDetailsFactory = problemDetailsFactory ?? throw new ArgumentNullException(nameof(problemDetailsFactory));
         ArgumentNullException.ThrowIfNull(jsonOptions);
-        _serializerOptions = jsonOptions.Value?.JsonSerializerOptions ?? new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var baseOptions = jsonOptions.Value?.JsonSerializerOptions ?? new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        _problemSerializerOptions = new JsonSerializerOptions(baseOptions)
+        {
+            // ProblemDetails contract explicitly allows nulls (e.g. detail) and tests rely on the field being present.
+            DefaultIgnoreCondition = JsonIgnoreCondition.Never
+        };
     }
 
     public async Task InvokeAsync(HttpContext context, RequestDelegate next)
@@ -84,7 +90,7 @@ public sealed class ExceptionHandlingMiddleware : IMiddleware
 
         LogException(mapping.LogLevel, context, exception, traceId);
 
-        var payload = JsonSerializer.Serialize(problem, _serializerOptions);
+        var payload = JsonSerializer.Serialize(problem, _problemSerializerOptions);
         return context.Response.WriteAsync(payload);
     }
 
@@ -129,7 +135,7 @@ public sealed class ExceptionHandlingMiddleware : IMiddleware
                 null,
                 LogLevel.Warning),
 
-            JsonException => BuildValidationResult("Malformed JSON payload", "body", "The request body contains invalid JSON."),
+            JsonException => BuildValidationResult("Request validation failed", "body", "The request body contains invalid JSON."),
             FormatException => BuildValidationResult("Request validation failed", "body", "The request payload format is invalid."),
             ArgumentException arg => BuildValidationResult("Request validation failed", arg.ParamName ?? "argument", arg.Message),
 

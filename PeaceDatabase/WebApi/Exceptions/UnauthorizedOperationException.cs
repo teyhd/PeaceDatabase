@@ -1,5 +1,4 @@
 using System;
-using System.Runtime.Serialization;
 
 namespace PeaceDatabase.WebApi.Exceptions;
 
@@ -26,20 +25,4 @@ public sealed class UnauthorizedOperationException : Exception
         RequiresAuthentication = requiresAuthentication;
     }
 
-#pragma warning disable SYSLIB0051 // Binary serialization is obsolete but preserved for compatibility with existing consumers.
-    [Obsolete("Serialization constructor is obsolete.", DiagnosticId = "SYSLIB0051")]
-    private UnauthorizedOperationException(SerializationInfo info, StreamingContext context)
-        : base(info, context)
-    {
-        RequiresAuthentication = info.GetBoolean(nameof(RequiresAuthentication));
-    }
-
-    [Obsolete("Serialization support is obsolete.", DiagnosticId = "SYSLIB0051")]
-    public override void GetObjectData(SerializationInfo info, StreamingContext context)
-    {
-        ArgumentNullException.ThrowIfNull(info);
-        info.AddValue(nameof(RequiresAuthentication), RequiresAuthentication);
-        base.GetObjectData(info, context);
-    }
-#pragma warning restore SYSLIB0051
 }
