@@ -1,8 +1,12 @@
 ﻿// File: Controllers/TestApiController.cs
+using System;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using PeaceDatabase.Core.Models;
 using PeaceDatabase.Core.Services;
+using PeaceDatabase.WebApi.Exceptions;
 
 namespace PeaceDatabase.WebApi.Controllers;
 
@@ -12,6 +16,10 @@ namespace PeaceDatabase.WebApi.Controllers;
 /// </summary>
 [ApiController]
 [Route("v1/test")]
+[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
 public sealed class TestApiController : ControllerBase
 {
     private readonly IConfiguration _cfg;
@@ -78,10 +86,16 @@ public sealed class TestApiController : ControllerBase
     {
         var db = body.Db?.Trim();
         if (string.IsNullOrWhiteSpace(db))
-            return BadRequest(new { ok = false, ошибка = "db не указана" });
+        {
+            throw new DomainValidationException(
+                "The db field is required.",
+                new Dictionary<string, string[]>
+                {
+                    ["db"] = new[] { "The db field is required." }
+                });
+        }
 
-        var mk = _svc.CreateDb(db);
-        if (!mk.Ok) return Problem(mk.Error ?? "Не удалось создать БД", statusCode: 500);
+        ControllerErrorMapper.ThrowIfFailed(_svc.CreateDb(db), db);
 
         var docId = "selfcheck-doc";
         var existing = _svc.Get(db, docId);
@@ -90,20 +104,16 @@ public sealed class TestApiController : ControllerBase
         if (existing is null)
         {
             payload = new Document { Id = docId, Data = new() { ["k"] = "v1", ["text"] = "Привет, файловый режим!" } };
-            var p = _svc.Post(db, payload);
-            if (!p.Ok || p.Doc is null) return Problem(p.Error ?? "Ошибка Post", statusCode: 500);
-            payload = p.Doc;
+            payload = ControllerErrorMapper.EnsureDocument(_svc.Post(db, payload), db, docId);
         }
         else
         {
             payload = new Document { Id = existing.Id, Rev = existing.Rev, Data = new() { ["k"] = "v2", ["text"] = "Документ обновлён" } };
-            var u = _svc.Put(db, payload);
-            if (!u.Ok || u.Doc is null) return Problem(u.Error ?? "Ошибка Put", statusCode: 500);
-            payload = u.Doc;
+            payload = ControllerErrorMapper.EnsureDocument(_svc.Put(db, payload), db, docId);
         }
 
         var read = _svc.Get(db, docId);
-        if (read is null) return Problem("Ошибка при повторном чтении", statusCode: 500);
+        if (read is null) throw new InvalidOperationException("Self-check document was not readable after write.");
 
         var mode = _cfg["Storage:Mode"] ?? Environment.GetEnvironmentVariable("STORAGE_MODE") ?? "InMemory";
         string? dataRoot = _cfg["Storage:DataRoot"] ?? Environment.GetEnvironmentVariable("STORAGE_DATA_ROOT");

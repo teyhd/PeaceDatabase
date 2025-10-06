@@ -84,6 +84,69 @@
 
 ---
 
+## Ошибки API
+
+Все ошибки возвращаются в формате RFC 7807 (`application/problem+json`).
+Полезные поля:
+
+- `type` — URI категории ошибки из пространства `https://example.com/errors/*`.
+- `title` — краткое описание.
+- `status` — HTTP-статус.
+- `traceId` — идентификатор запроса (совместим с Activity/Logging).
+- `errors` — словарь `поле → сообщения` (для валидационных сценариев).
+
+Примеры ответов:
+
+**400 (валидация)**
+
+```json
+{
+  "type": "https://example.com/errors/validation",
+  "title": "Request validation failed",
+  "status": 400,
+  "traceId": "00-<guid>-<span>-01",
+  "errors": {
+    "name": ["The Name field is required.", "The Name length must be between 1 and 64."],
+    "age": ["The field Age must be between 1 and 120."]
+  }
+}
+```
+
+**404 (ресурс не найден)**
+
+```json
+{
+  "type": "https://example.com/errors/not-found",
+  "title": "Resource not found",
+  "status": 404,
+  "traceId": "00-<guid>-<span>-01"
+}
+```
+
+**409 (конфликт)**
+
+```json
+{
+  "type": "https://example.com/errors/conflict",
+  "title": "Operation conflict",
+  "status": 409,
+  "traceId": "00-<guid>-<span>-01"
+}
+```
+
+**500 (внутренняя ошибка)**
+
+```json
+{
+  "type": "https://example.com/errors/internal",
+  "title": "Unexpected server error",
+  "status": 500,
+  "traceId": "00-<guid>-<span>-01"
+}
+```
+
+---
+
 ## Планы
 
 - Дисковое и LSM-хранилище.
