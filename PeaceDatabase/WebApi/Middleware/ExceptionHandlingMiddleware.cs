@@ -79,7 +79,9 @@ public sealed class ExceptionHandlingMiddleware : IMiddleware
         return context.Response.WriteAsJsonAsync(problem);
     }
 
-    private (int StatusCode, Uri Type, string Title, string? Detail, IDictionary<string, string[]>? Errors, LogLevel LogLevel) MapException(Exception? exception)
+    private (int StatusCode, Uri Type, string Title, string? Detail,
+         IReadOnlyDictionary<string, string[]>? Errors, LogLevel LogLevel)
+        MapException(Exception? exception)
     {
         if (exception is null)
         {
@@ -143,7 +145,9 @@ public sealed class ExceptionHandlingMiddleware : IMiddleware
         };
     }
 
-    private static (int StatusCode, Uri Type, string Title, string? Detail, IDictionary<string, string[]>? Errors, LogLevel LogLevel) BuildValidationResult(string title, string key, string message)
+    private static (int StatusCode, Uri Type, string Title, string? Detail,
+               IReadOnlyDictionary<string, string[]>? Errors, LogLevel LogLevel)
+    BuildValidationResult(string title, string key, string message)
     {
         var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
         {

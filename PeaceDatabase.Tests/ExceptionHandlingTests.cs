@@ -27,12 +27,16 @@ public class ExceptionHandlingTests : IClassFixture<WebApplicationFactory<Progra
     [Fact]
     public async Task Invalid_json_returns_validation_problem()
     {
-        var client = _factory.CreateClient();
+        using var client = _factory.CreateClient();
         await client.PutAsync("/v1/db/app", content: null);
 
-        var response = await client.PostAsync("/v1/db/app/docs", new StringContent("{\"id\":", Encoding.UTF8, "application/json"));
+        var response = await client.PostAsync(
+            "/v1/db/app/docs",
+            new StringContent("{\"id\":", Encoding.UTF8, "application/json"));
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        response.Content.Headers.ContentType?.MediaType.Should().Be("application/problem+json");
+
         var problem = await ParseProblem(response);
         problem.GetProperty("type").GetString().Should().Be("https://example.com/errors/validation");
         problem.GetProperty("title").GetString().Should().Be("Malformed JSON payload");
@@ -40,6 +44,7 @@ public class ExceptionHandlingTests : IClassFixture<WebApplicationFactory<Progra
         problem.GetProperty("traceId").GetString().Should().NotBeNullOrWhiteSpace();
         problem.GetProperty("errors").GetProperty("body").EnumerateArray().Should().ContainSingle();
     }
+
 
     [Fact]
     public async Task Model_validation_returns_problem_details()
@@ -74,26 +79,26 @@ public class ExceptionHandlingTests : IClassFixture<WebApplicationFactory<Progra
     [Fact]
     public async Task Conflict_exception_returns_problem_details()
     {
-        var client = _factory.CreateClient();
-        await client.PutAsync("/v1/db/app", content: null);
+        using var client = _factory.CreateClient();
+        var db = $"app-{Guid.NewGuid():N}";
+        await client.PutAsync($"/v1/db/{db}", content: null);
 
-        var create = await client.PostAsJsonAsync("/v1/db/app/docs", new Document
+        var id = $"conflict-{Guid.NewGuid():N}";
+        var create = await client.PostAsJsonAsync($"/v1/db/{db}/docs", new Document
         {
-            Id = "conflict-doc",
+            Id = id,
             Data = new Dictionary<string, object> { ["type"] = "note" }
         });
         create.StatusCode.Should().Be(HttpStatusCode.Created);
-        var created = await create.Content.ReadFromJsonAsync<Document>();
-        created.Should().NotBeNull();
 
         var conflictPayload = new Document
         {
-            Id = "conflict-doc",
+            Id = id,
             Rev = "1-notarev",
             Data = new Dictionary<string, object> { ["type"] = "note" }
         };
 
-        var response = await client.PutAsJsonAsync("/v1/db/app/docs/conflict-doc", conflictPayload);
+        var response = await client.PutAsJsonAsync($"/v1/db/{db}/docs/{id}", conflictPayload);
 
         response.StatusCode.Should().Be(HttpStatusCode.Conflict);
         var problem = await ParseProblem(response);
@@ -122,7 +127,7 @@ public class ExceptionHandlingTests : IClassFixture<WebApplicationFactory<Progra
     {
         var payload = await response.Content.ReadAsStringAsync();
         using var json = JsonDocument.Parse(payload);
-        return json.RootElement;
+        return json.RootElement.Clone(); // <-- вот это важно
     }
 
     private sealed class ThrowingWebApplicationFactory : WebApplicationFactory<Program>

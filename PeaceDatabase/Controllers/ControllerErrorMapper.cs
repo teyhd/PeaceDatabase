@@ -5,10 +5,6 @@ using PeaceDatabase.WebApi.Exceptions;
 
 namespace PeaceDatabase.WebApi.Controllers;
 
-/// <summary>
-/// Central place where service error messages are translated into domain-specific exceptions.
-/// Extend <see cref="MapException"/> when new storage implementations introduce new messages.
-/// </summary>
 internal static class ControllerErrorMapper
 {
     public static void ThrowIfFailed((bool Ok, string? Error) result, string db, string? id = null)
