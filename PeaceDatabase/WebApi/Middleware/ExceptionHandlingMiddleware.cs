@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using PeaceDatabase.WebApi.Exceptions;
 
 namespace PeaceDatabase.WebApi.Middleware;
@@ -26,11 +27,17 @@ public sealed class ExceptionHandlingMiddleware : IMiddleware
 
     private readonly ILogger<ExceptionHandlingMiddleware> _logger;
     private readonly ProblemDetailsFactory _problemDetailsFactory;
+    private readonly JsonSerializerOptions _serializerOptions;
 
-    public ExceptionHandlingMiddleware(ILogger<ExceptionHandlingMiddleware> logger, ProblemDetailsFactory problemDetailsFactory)
+    public ExceptionHandlingMiddleware(
+        ILogger<ExceptionHandlingMiddleware> logger,
+        ProblemDetailsFactory problemDetailsFactory,
+        IOptions<JsonOptions> jsonOptions)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _problemDetailsFactory = problemDetailsFactory ?? throw new ArgumentNullException(nameof(problemDetailsFactory));
+        ArgumentNullException.ThrowIfNull(jsonOptions);
+        _serializerOptions = jsonOptions.Value?.JsonSerializerOptions ?? new JsonSerializerOptions(JsonSerializerDefaults.Web);
     }
 
     public async Task InvokeAsync(HttpContext context, RequestDelegate next)
@@ -64,6 +71,7 @@ public sealed class ExceptionHandlingMiddleware : IMiddleware
             detail: mapping.Detail);
 
         problem.Extensions["traceId"] = traceId;
+        problem.Status = mapping.StatusCode;
 
         if (mapping.Errors?.Count > 0)
         {
@@ -76,7 +84,8 @@ public sealed class ExceptionHandlingMiddleware : IMiddleware
 
         LogException(mapping.LogLevel, context, exception, traceId);
 
-        return context.Response.WriteAsJsonAsync(problem);
+        var payload = JsonSerializer.Serialize(problem, _serializerOptions);
+        return context.Response.WriteAsync(payload);
     }
 
     private (int StatusCode, Uri Type, string Title, string? Detail, IReadOnlyDictionary<string, string[]>? Errors, LogLevel LogLevel) MapException(Exception? exception)
