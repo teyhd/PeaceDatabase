@@ -9,11 +9,13 @@ using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ApiExplorer;
+using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Routing.Patterns;
 
 using PeaceDatabase.Core.Services;
 using PeaceDatabase.Storage.InMemory;
+using PeaceDatabase.WebApi.Middleware;
 
 // ===== HDD mode (файловое хранилище)
 using PeaceDatabase.Storage.Disk;
@@ -31,6 +33,29 @@ builder.Services
         o.JsonSerializerOptions.WriteIndented = false;
         o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
     });
+
+builder.Services.Configure<ApiBehaviorOptions>(options =>
+{
+    options.InvalidModelStateResponseFactory = context =>
+    {
+        var problemDetailsFactory = context.HttpContext.RequestServices.GetRequiredService<ProblemDetailsFactory>();
+        var problem = problemDetailsFactory.CreateValidationProblemDetails(
+            context.HttpContext,
+            context.ModelState,
+            statusCode: StatusCodes.Status400BadRequest,
+            title: "Request validation failed",
+            type: "https://example.com/errors/validation");
+
+        problem.Extensions["traceId"] = context.HttpContext.TraceIdentifier;
+
+        return new BadRequestObjectResult(problem)
+        {
+            ContentTypes = { "application/problem+json" }
+        };
+    };
+});
+
+builder.Services.AddTransient<ExceptionHandlingMiddleware>();
 
 // ---------- Логирование ----------
 builder.Logging.ClearProviders();
@@ -92,23 +117,17 @@ var requestsTotal = 0L;
 var app = builder.Build();
 
 // ---------- Глобальная обработка ошибок ----------
-app.UseExceptionHandler(errorApp =>
+app.UseExceptionHandler(builder =>
 {
-    errorApp.Run(async context =>
+    builder.Run(async context =>
     {
         var feature = context.Features.Get<IExceptionHandlerFeature>();
-        var problem = new ProblemDetails
-        {
-            Type = "about:blank",
-            Title = "Unhandled exception",
-            Detail = app.Environment.IsDevelopment() ? feature?.Error.ToString() : feature?.Error.Message,
-            Status = StatusCodes.Status500InternalServerError
-        };
-        context.Response.ContentType = "application/problem+json";
-        context.Response.StatusCode = problem.Status ?? 500;
-        await context.Response.WriteAsJsonAsync(problem);
+        var handler = context.RequestServices.GetRequiredService<ExceptionHandlingMiddleware>();
+        await handler.HandleExceptionAsync(context, feature?.Error);
     });
 });
+
+app.UseMiddleware<ExceptionHandlingMiddleware>();
 
 app.UseHttpsRedirection();
 app.UseCors(CorsPolicy);

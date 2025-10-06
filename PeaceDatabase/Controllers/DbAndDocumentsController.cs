@@ -1,10 +1,14 @@
 ﻿// File: Controllers/DbAndDocumentsController.cs
+using System;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using PeaceDatabase.Core.Models;
 using PeaceDatabase.Core.Services;
 using PeaceDatabase.Storage.Binary; // добавлено
 using System.Diagnostics; // для бенчмарка
+using PeaceDatabase.WebApi.Exceptions;
 
 namespace PeaceDatabase.WebApi.Controllers;
 
@@ -13,6 +17,10 @@ namespace PeaceDatabase.WebApi.Controllers;
 // ===============================
 [ApiController]
 [Route("v1/db")]
+[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
 public class DbApiController : ControllerBase
 {
     private readonly IDocumentService _svc;
@@ -26,8 +34,7 @@ public class DbApiController : ControllerBase
     [HttpHead("{db}")]
     public IActionResult HeadDb([FromRoute] string db)
     {
-        var res = _svc.CreateDb(db);
-        if (!res.Ok) return Problem(res.Error ?? "db error", statusCode: 500);
+        ControllerErrorMapper.ThrowIfFailed(_svc.CreateDb(db), db);
         return NoContent();
     }
 
@@ -35,8 +42,7 @@ public class DbApiController : ControllerBase
     [HttpPut("{db}")]
     public IActionResult CreateDb([FromRoute] string db)
     {
-        var res = _svc.CreateDb(db);
-        if (!res.Ok) return Problem(res.Error ?? "db create failed", statusCode: 500);
+        ControllerErrorMapper.ThrowIfFailed(_svc.CreateDb(db), db);
         return Ok(new { ok = true, db });
     }
 
@@ -44,14 +50,7 @@ public class DbApiController : ControllerBase
     [HttpDelete("{db}")]
     public IActionResult DeleteDb([FromRoute] string db)
     {
-        var res = _svc.DeleteDb(db);
-        if (!res.Ok)
-        {
-            var msg = res.Error ?? "db delete failed";
-            if (msg.Contains("not found", StringComparison.OrdinalIgnoreCase))
-                return NotFound(new { ok = false, error = msg, db });
-            return Problem(msg, statusCode: 500);
-        }
+        ControllerErrorMapper.ThrowIfFailed(_svc.DeleteDb(db), db);
         return Ok(new { ok = true, db });
     }
 
@@ -128,6 +127,10 @@ public class DbApiController : ControllerBase
 // ===============================
 [ApiController]
 [Route("v1/db/{db}/docs")]
+[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
 public class DocsApiController : ControllerBase
 {
     private readonly IDocumentService _svc;
@@ -144,7 +147,7 @@ public class DocsApiController : ControllerBase
     {
         var doc = _svc.Get(db, id, rev);
         if (doc == null)
-            return NotFound(new { ok = false, error = "not found", db, id, rev });
+            throw new ResourceNotFoundException($"Document '{id}' was not found in '{db}'.");
         return Ok(doc);
     }
 
@@ -155,7 +158,7 @@ public class DocsApiController : ControllerBase
     {
         var doc = _svc.Get(db, id, rev);
         if (doc == null)
-            return NotFound(new { ok = false, error = "not found", db, id, rev });
+            throw new ResourceNotFoundException($"Document '{id}' was not found in '{db}'.");
         var bytes = CustomBinaryDocumentCodec.Serialize(doc);
         return File(bytes, BinaryMime, fileDownloadName: id + ".pdoc");
     }
@@ -167,24 +170,21 @@ public class DocsApiController : ControllerBase
         var idProp = body.GetType().GetProperty("Id");
         var bodyId = idProp?.GetValue(body)?.ToString();
         if (bodyId != null && !string.Equals(bodyId, id, StringComparison.Ordinal))
-            return BadRequest(new { ok = false, error = "_id in body must equal route id", routeId = id, bodyId });
-        
+        {
+            throw new DomainValidationException(
+                "Route id and body _id must match.",
+                new Dictionary<string, string[]>
+                {
+                    ["id"] = new[] { "Route id and body _id must match." },
+                    ["_id"] = new[] { "Route id and body _id must match." }
+                });
+        }
+
         if (bodyId == null && idProp?.CanWrite == true)
             idProp.SetValue(body, id);
 
-        var res = _svc.Put(db, body);
-        if (!res.Ok)
-        {
-            var msg = res.Error ?? "put failed";
-            if (msg.Contains("conflict", StringComparison.OrdinalIgnoreCase))
-                return Conflict(new { ok = false, error = msg, db, id });
-            return Problem(msg, statusCode: 500);
-        }
-
-        if (res.Doc == null)
-            return Problem("put returned null document", statusCode: 500);
-        
-        return Ok(res.Doc);
+        var doc = ControllerErrorMapper.EnsureDocument(_svc.Put(db, body), db, id);
+        return Ok(doc);
     }
 
     // PUT /v1/db/{db}/docs/{id}/bin  (принимает бинарный документ)
@@ -197,17 +197,18 @@ public class DocsApiController : ControllerBase
         Request.Body.CopyTo(ms);
         var doc = CustomBinaryDocumentCodec.Deserialize(ms.ToArray());
         if (!string.Equals(doc.Id, id, StringComparison.Ordinal) && !string.IsNullOrEmpty(doc.Id))
-            return BadRequest(new { ok = false, error = "_id in binary body must equal route id", routeId = id, bodyId = doc.Id });
-        doc.Id = id; // нормализуем
-        var res = _svc.Put(db, doc);
-        if (!res.Ok)
         {
-            var msg = res.Error ?? "put failed";
-            if (msg.Contains("conflict", StringComparison.OrdinalIgnoreCase))
-                return Conflict(new { ok = false, error = msg, db, id });
-            return Problem(msg, statusCode: 500);
+            throw new DomainValidationException(
+                "Route id and body _id must match.",
+                new Dictionary<string, string[]>
+                {
+                    ["id"] = new[] { "Route id and body _id must match." },
+                    ["_id"] = new[] { "Route id and body _id must match." }
+                });
         }
-        var bytes = CustomBinaryDocumentCodec.Serialize(res.Doc!);
+        doc.Id = id; // нормализуем
+        var updated = ControllerErrorMapper.EnsureDocument(_svc.Put(db, doc), db, id);
+        var bytes = CustomBinaryDocumentCodec.Serialize(updated);
         return File(bytes, BinaryMime, fileDownloadName: id + ".pdoc");
     }
 
@@ -215,13 +216,11 @@ public class DocsApiController : ControllerBase
     [HttpPost]
     public IActionResult Post([FromRoute] string db, [FromBody, Required] Document body)
     {
-        var res = _svc.Post(db, body);
-        if (!res.Ok) return Problem(res.Error ?? "post failed", statusCode: 500);
-        if (res.Doc == null) return Problem("post returned null document", statusCode: 500);
-        var idProp = res.Doc.GetType().GetProperty("Id");
-        var idVal = idProp?.GetValue(res.Doc)?.ToString();
+        var created = ControllerErrorMapper.EnsureDocument(_svc.Post(db, body), db);
+        var idProp = created.GetType().GetProperty("Id");
+        var idVal = idProp?.GetValue(created)?.ToString();
         var location = idVal != null ? $"/v1/db/{db}/docs/{idVal}" : $"/v1/db/{db}/docs";
-        return Created(location, res.Doc);
+        return Created(location, created);
     }
 
     // POST /v1/db/{db}/docs/bin  (бинарный формат)
@@ -233,11 +232,10 @@ public class DocsApiController : ControllerBase
         using var ms = new MemoryStream();
         Request.Body.CopyTo(ms);
         var doc = CustomBinaryDocumentCodec.Deserialize(ms.ToArray());
-        var res = _svc.Post(db, doc);
-        if (!res.Ok || res.Doc == null) return Problem(res.Error ?? "post failed", statusCode: 500);
-        var bytes = CustomBinaryDocumentCodec.Serialize(res.Doc);
-        var location = $"/v1/db/{db}/docs/{res.Doc.Id}/bin";
-        return File(bytes, BinaryMime, fileDownloadName: res.Doc.Id + ".pdoc");
+        var created = ControllerErrorMapper.EnsureDocument(_svc.Post(db, doc), db);
+        var bytes = CustomBinaryDocumentCodec.Serialize(created);
+        var location = $"/v1/db/{db}/docs/{created.Id}/bin";
+        return File(bytes, BinaryMime, fileDownloadName: created.Id + ".pdoc");
     }
 
     // DELETE /v1/db/{db}/docs/{id}?rev=
@@ -245,18 +243,15 @@ public class DocsApiController : ControllerBase
     public IActionResult Delete([FromRoute] string db, [FromRoute] string id, [FromQuery] string? rev)
     {
         if (string.IsNullOrWhiteSpace(rev))
-            return BadRequest(new { ok = false, error = "rev query parameter is required", db, id });
-        var res = _svc.Delete(db, id, rev!);
-        if (!res.Ok)
         {
-            var msg = res.Error ?? "delete failed";
-            if (msg.Contains("not found", StringComparison.OrdinalIgnoreCase))
-                return NotFound(new { ok = false, error = msg, db, id, rev });
-            if (msg.Contains("conflict", StringComparison.OrdinalIgnoreCase))
-                return Conflict(new { ok = false, error = msg, db, id, rev });
-            return Problem(msg, statusCode: 500);
+            throw new DomainValidationException(
+                "The rev query parameter is required.",
+                new Dictionary<string, string[]>
+                {
+                    ["rev"] = new[] { "The rev query parameter is required." }
+                });
         }
-
+        ControllerErrorMapper.ThrowIfFailed(_svc.Delete(db, id, rev!), db, id);
         return Ok(new { ok = true, id, rev });
     }
 }
@@ -265,7 +260,10 @@ public class DocsApiController : ControllerBase
 // Бенчмарк бинарной vs JSON сериализации
 // ===============================
 [ApiController]
-[Route("v1/bench")] 
+[Route("v1/bench")]
+[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
 public sealed class BenchApiController : ControllerBase
 {
     private readonly IDocumentService _svc;
@@ -279,7 +277,7 @@ public sealed class BenchApiController : ControllerBase
         if (it <= 0) it = 1;
         if (it > 100_000_000) it = 100_000_000;
         var doc = _svc.Get(db, id);
-        if (doc == null) return NotFound(new { ok = false, error = "not found", db, id });
+        if (doc == null) throw new ResourceNotFoundException($"Document '{id}' was not found in '{db}'.");
 
         // JSON serialize/deserialize
         var jsonSerSw = Stopwatch.StartNew();
@@ -291,7 +289,7 @@ public sealed class BenchApiController : ControllerBase
         for (int i = 0; i < it; i++)
         {
             var d = System.Text.Json.JsonSerializer.Deserialize<Document>(lastJson!);
-            if (d == null) return Problem("json deser failed", statusCode: 500);
+            if (d == null) throw new InvalidOperationException("JSON deserialization returned null.");
         }
         jsonDesSw.Stop();
 
@@ -305,7 +303,7 @@ public sealed class BenchApiController : ControllerBase
         for (int i = 0; i < it; i++)
         {
             var d = CustomBinaryDocumentCodec.Deserialize(lastBin!);
-            if (d == null) return Problem("bin deser failed", statusCode: 500);
+            if (d == null) throw new InvalidOperationException("Binary deserialization returned null.");
         }
         binDesSw.Stop();
 
@@ -326,3 +324,4 @@ public sealed class BenchApiController : ControllerBase
         });
     }
 }
+
