@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Routing.Patterns;
 
 using PeaceDatabase.Core.Services;
 using PeaceDatabase.Storage.InMemory;
+using PeaceDatabase.WebApi.Controllers;
 
 // ===== HDD mode (файловое хранилище)
 using PeaceDatabase.Storage.Disk;
@@ -349,7 +350,7 @@ static class StorageEndpoints
         group.MapGet("/dir/{db}", (string db) =>
         {
             if (storageMode != "File")
-                return Results.BadRequest(new { ok = false, error = "Storage mode is InMemory" });
+                return Results.BadRequest(new ErrorResponse { Ok = false, Error = "Storage mode is InMemory" });
 
             var safe = SanitizeName(db);
             var dir = Path.Combine(dataRoot, safe);

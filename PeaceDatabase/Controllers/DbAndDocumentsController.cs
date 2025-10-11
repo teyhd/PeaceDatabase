@@ -251,11 +251,10 @@ public class DocsApiController : ControllerBase
         using var ms = new MemoryStream();
         await Request.Body.CopyToAsync(ms, HttpContext.RequestAborted);
         if (ms.Length == 0)
-            return BadRequest(new { ok = false, error = "request body is empty. Send binary payload with Content-Type 'application/x-peacedb-doc'", db, id });
+            return BadRequest(new ErrorResponse { Ok = false, Error = "request body is empty. Send binary payload with Content-Type 'application/x-peacedb-doc'", Db = db, Id = id });
         var doc = CustomBinaryDocumentCodec.Deserialize(ms.ToArray());
         if (!string.Equals(doc.Id, id, StringComparison.Ordinal) && !string.IsNullOrEmpty(doc.Id))
-            return BadRequest(new { ok = false, error = "_id in binary body must equal route id", routeId = id, bodyId = doc.Id });
-        doc.Id = id; // нормализуем
+            return BadRequest(new ErrorResponse { Ok = false, Error = $"_id in binary body must equal route id (routeId: {id}, bodyId: {doc.Id})", Db = db, Id = id });        doc.Id = id; // нормализуем
         var res = _svc.Put(db, doc);
         if (!res.Ok)
         {
@@ -275,13 +274,12 @@ public class DocsApiController : ControllerBase
     public async Task<IActionResult> PutBinaryUpload([FromRoute] string db, [FromRoute] string id, [FromForm] BinaryUploadForm form)
     {
         if (form.File == null || form.File.Length == 0)
-            return BadRequest(new { ok = false, error = "file is required and cannot be empty" });
+            return BadRequest(new ErrorResponse { Ok = false, Error = "file is required and cannot be empty", Db = db, Id = id });
         using var ms = new MemoryStream();
         await form.File.CopyToAsync(ms, HttpContext.RequestAborted);
         var doc = CustomBinaryDocumentCodec.Deserialize(ms.ToArray());
         if (!string.Equals(doc.Id, id, StringComparison.Ordinal) && !string.IsNullOrEmpty(doc.Id))
-            return BadRequest(new { ok = false, error = "_id in binary body must equal route id", routeId = id, bodyId = doc.Id });
-        doc.Id = id;
+            return BadRequest(new ErrorResponse { Ok = false, Error = "_id in binary body must equal route id", Db = db, Id = id });
         var res = _svc.Put(db, doc);
         if (!res.Ok)
         {
@@ -316,8 +314,7 @@ public class DocsApiController : ControllerBase
         using var ms = new MemoryStream();
         await Request.Body.CopyToAsync(ms, HttpContext.RequestAborted);
         if (ms.Length == 0)
-            return BadRequest(new { ok = false, error = "request body is empty. Send binary payload with Content-Type 'application/x-peacedb-doc'", db });
-        var doc = CustomBinaryDocumentCodec.Deserialize(ms.ToArray());
+            return BadRequest(new ErrorResponse { Ok = false, Error = "request body is empty. Send binary payload with Content-Type 'application/x-peacedb-doc'" });        var doc = CustomBinaryDocumentCodec.Deserialize(ms.ToArray());
         // For create, ignore incoming _rev to satisfy service contract
         doc.Rev = null;
         var res = _svc.Post(db, doc);
@@ -334,7 +331,7 @@ public class DocsApiController : ControllerBase
     public async Task<IActionResult> PostBinaryUpload([FromRoute] string db, [FromForm] BinaryUploadForm form)
     {
         if (form.File == null || form.File.Length == 0)
-            return BadRequest(new { ok = false, error = "file is required and cannot be empty" });
+            return BadRequest(new ErrorResponse { Ok = false, Error = "file is required and cannot be empty" });
         using var ms = new MemoryStream();
         await form.File.CopyToAsync(ms, HttpContext.RequestAborted);
         var doc = CustomBinaryDocumentCodec.Deserialize(ms.ToArray());
@@ -352,15 +349,15 @@ public class DocsApiController : ControllerBase
     public IActionResult Delete([FromRoute] string db, [FromRoute] string id, [FromQuery] string? rev)
     {
         if (string.IsNullOrWhiteSpace(rev))
-            return BadRequest(new { ok = false, error = "rev query parameter is required", db, id });
+            return BadRequest(new ErrorResponse { Ok = false, Error = "rev query parameter is required", Db = db, Id = id });
         var res = _svc.Delete(db, id, rev!);
         if (!res.Ok)
         {
             var msg = res.Error ?? "delete failed";
             if (msg.Contains("not found", StringComparison.OrdinalIgnoreCase))
-                return NotFound(new { ok = false, error = msg, db, id, rev });
+                return NotFound(new ErrorResponse { Ok = false, Error = msg, Db = db, Id = id, Rev = rev });
             if (msg.Contains("conflict", StringComparison.OrdinalIgnoreCase))
-                return Conflict(new { ok = false, error = msg, db, id, rev });
+                return Conflict(new ErrorResponse { Ok = false, Error = msg, Db = db, Id = id, Rev = rev });
             return Problem(msg, statusCode: 500);
         }
 
@@ -387,7 +384,7 @@ public sealed class BenchApiController : ControllerBase
         if (it <= 0) it = 1;
         if (it > 100_000_000) it = 100_000_000;
         var doc = _svc.Get(db, id);
-        if (doc == null) return NotFound(new { ok = false, error = "not found", db, id });
+        if (doc == null) return NotFound(new ErrorResponse { Ok = false, Error = "not found", Db = db, Id = id });
 
         // JSON serialize/deserialize
         var jsonSerSw = Stopwatch.StartNew();
