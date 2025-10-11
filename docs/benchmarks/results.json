@@ -1,0 +1,160 @@
+{
+  "dataset": {
+    "source": "synthetic",
+    "total": 100000
+  },
+  "scales": [
+    1,
+    10,
+    100,
+    1000,
+    10000,
+    100000
+  ],
+  "results": [
+    {
+      "format": "json",
+      "n": 1,
+      "serializeMs": 0.0587,
+      "deserializeMs": 0.0439,
+      "totalBytes": 265,
+      "avgBytesPerDoc": 265
+    },
+    {
+      "format": "binary",
+      "n": 1,
+      "serializeMs": 0.0256,
+      "deserializeMs": 0.0184,
+      "totalBytes": 255,
+      "avgBytesPerDoc": 255
+    },
+    {
+      "format": "protobuf",
+      "n": 1,
+      "serializeMs": 0.0434,
+      "deserializeMs": 0.0146,
+      "totalBytes": 225,
+      "avgBytesPerDoc": 225
+    },
+    {
+      "format": "json",
+      "n": 10,
+      "serializeMs": 0.0594,
+      "deserializeMs": 0.0774,
+      "totalBytes": 2912,
+      "avgBytesPerDoc": 291.2
+    },
+    {
+      "format": "binary",
+      "n": 10,
+      "serializeMs": 0.0688,
+      "deserializeMs": 0.0925,
+      "totalBytes": 2785,
+      "avgBytesPerDoc": 278.5
+    },
+    {
+      "format": "protobuf",
+      "n": 10,
+      "serializeMs": 0.1156,
+      "deserializeMs": 0.0953,
+      "totalBytes": 2485,
+      "avgBytesPerDoc": 248.5
+    },
+    {
+      "format": "json",
+      "n": 100,
+      "serializeMs": 0.5071,
+      "deserializeMs": 0.7167,
+      "totalBytes": 29158,
+      "avgBytesPerDoc": 291.58
+    },
+    {
+      "format": "binary",
+      "n": 100,
+      "serializeMs": 0.6105,
+      "deserializeMs": 0.6439,
+      "totalBytes": 27940,
+      "avgBytesPerDoc": 279.4
+    },
+    {
+      "format": "protobuf",
+      "n": 100,
+      "serializeMs": 1.044,
+      "deserializeMs": 0.8188,
+      "totalBytes": 24940,
+      "avgBytesPerDoc": 249.4
+    },
+    {
+      "format": "json",
+      "n": 1000,
+      "serializeMs": 4.9815,
+      "deserializeMs": 7.2365,
+      "totalBytes": 292434,
+      "avgBytesPerDoc": 292.434
+    },
+    {
+      "format": "binary",
+      "n": 1000,
+      "serializeMs": 6.019,
+      "deserializeMs": 6.8021,
+      "totalBytes": 280390,
+      "avgBytesPerDoc": 280.39
+    },
+    {
+      "format": "protobuf",
+      "n": 1000,
+      "serializeMs": 11.2756,
+      "deserializeMs": 8.5003,
+      "totalBytes": 250390,
+      "avgBytesPerDoc": 250.39
+    },
+    {
+      "format": "json",
+      "n": 10000,
+      "serializeMs": 53.5898,
+      "deserializeMs": 83.048,
+      "totalBytes": 2934153,
+      "avgBytesPerDoc": 293.4153
+    },
+    {
+      "format": "binary",
+      "n": 10000,
+      "serializeMs": 191.4864,
+      "deserializeMs": 57.0336,
+      "totalBytes": 2813890,
+      "avgBytesPerDoc": 281.389
+    },
+    {
+      "format": "protobuf",
+      "n": 10000,
+      "serializeMs": 101.104,
+      "deserializeMs": 88.8744,
+      "totalBytes": 2513890,
+      "avgBytesPerDoc": 251.389
+    },
+    {
+      "format": "json",
+      "n": 100000,
+      "serializeMs": 717.4799,
+      "deserializeMs": 938.7813,
+      "totalBytes": 29439940,
+      "avgBytesPerDoc": 294.3994
+    },
+    {
+      "format": "binary",
+      "n": 100000,
+      "serializeMs": 993.6275,
+      "deserializeMs": 711.6702,
+      "totalBytes": 28238890,
+      "avgBytesPerDoc": 282.3889
+    },
+    {
+      "format": "protobuf",
+      "n": 100000,
+      "serializeMs": 934.8642,
+      "deserializeMs": 935.9992,
+      "totalBytes": 25238890,
+      "avgBytesPerDoc": 252.3889
+    }
+  ]
+}

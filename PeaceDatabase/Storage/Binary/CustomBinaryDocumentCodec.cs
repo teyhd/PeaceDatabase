@@ -319,6 +319,20 @@ namespace PeaceDatabase.Storage.Binary
                         s.Write(dictBytes, 0, dictBytes.Length);
                         break;
                     }
+                case System.Collections.IEnumerable enumerable:
+                {
+                    // Обобщённые массивы/списки -> сериализуем как ListString со строкификацией
+                    WriteByte(s, (byte)DataType.ListString);
+                    var tmp = new List<string>();
+                    foreach (var item in enumerable)
+                    {
+                        tmp.Add(item?.ToString() ?? string.Empty);
+                    }
+                    WriteInt32LE(s, tmp.Count);
+                    foreach (var str in tmp) WriteString(s, str);
+                    break;
+                }
+
                 default:
                     throw new NotSupportedException($"Unsupported data type: {value.GetType().Name}");
             }
@@ -345,14 +359,31 @@ namespace PeaceDatabase.Storage.Binary
                     return false;
                 case System.Text.Json.JsonValueKind.Array:
                 {
-                    // Поддерживаем только массив строк => ListString
+                    // Нормализуем массив в List<string>, строкифицируя элементы
                     var list = new List<string>();
                     foreach (var el in je.EnumerateArray())
                     {
-                        if (el.ValueKind == System.Text.Json.JsonValueKind.String)
-                            list.Add(el.GetString()!);
-                        else
-                            throw new NotSupportedException("Only arrays of strings are supported in Data");
+                        switch (el.ValueKind)
+                        {
+                            case System.Text.Json.JsonValueKind.String:
+                                list.Add(el.GetString() ?? string.Empty);
+                                break;
+                            case System.Text.Json.JsonValueKind.Number:
+                            case System.Text.Json.JsonValueKind.Object:
+                            case System.Text.Json.JsonValueKind.Array:
+                                list.Add(el.GetRawText());
+                                break;
+                            case System.Text.Json.JsonValueKind.True:
+                                list.Add("true");
+                                break;
+                            case System.Text.Json.JsonValueKind.False:
+                                list.Add("false");
+                                break;
+                            case System.Text.Json.JsonValueKind.Null:
+                            case System.Text.Json.JsonValueKind.Undefined:
+                                list.Add("null");
+                                break;
+                        }
                     }
                     return list;
                 }

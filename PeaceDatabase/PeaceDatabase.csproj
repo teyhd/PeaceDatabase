@@ -13,10 +13,18 @@
     <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.0" />
     <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.22.1" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
+    <PackageReference Include="Google.Protobuf" Version="3.25.3" />
+    <PackageReference Include="Grpc.Tools" Version="2.61.0" PrivateAssets="All" />
   </ItemGroup>
 
   <ItemGroup>
     <Folder Include="tests\PeaceDatabase.Tests\" />
   </ItemGroup>
+
+  <ItemGroup>
+    <Protobuf Include="Protos\document.proto" GrpcServices="None" CompileOutputs="true" />
+  </ItemGroup>
+
+  
 
 </Project>

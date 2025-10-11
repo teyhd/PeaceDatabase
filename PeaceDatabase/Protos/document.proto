@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+option csharp_namespace = "PeaceDatabase.Protos";
+
+package peacedb;
+
+import "google/protobuf/struct.proto";
+
+// Protobuf representation of Document
+message DocumentMessage {
+  string id = 1;
+  string rev = 2;              // may be empty when null
+  bool deleted = 3;
+  google.protobuf.Struct data = 4; // arbitrary JSON-like map
+  repeated string tags = 5;
+  string content = 6;          // may be empty when null
+}
+
+
