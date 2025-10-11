@@ -91,6 +91,7 @@ namespace PeaceDatabase.Storage.InMemory
                 }
                 else
                 {
+                    // TODO: обсудить
                     if (!string.IsNullOrEmpty(doc.Rev))
                         return (false, null, "New document must not provide _rev");
                 }

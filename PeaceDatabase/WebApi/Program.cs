@@ -30,6 +30,8 @@ builder.Services
         o.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
         o.JsonSerializerOptions.WriteIndented = false;
         o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+        o.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+        o.JsonSerializerOptions.MaxDepth = 64;
     });
 
 // ---------- Логирование ----------
@@ -78,7 +80,41 @@ builder.Services.AddCors(opt =>
 });
 
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new() { Title = "PeaceDatabase API", Version = "v1" });
+    
+    // Configure for complex Dictionary<string, object> types
+    c.UseAllOfToExtendReferenceSchemas();
+    c.UseOneOfForPolymorphism();
+    
+    // Custom schema mapping for Dictionary<string, object>
+    c.MapType<Dictionary<string, object>>(() => new Microsoft.OpenApi.Models.OpenApiSchema
+    {
+        Type = "object",
+        AdditionalPropertiesAllowed = true,
+        AdditionalProperties = new Microsoft.OpenApi.Models.OpenApiSchema
+        {
+            Type = "object"
+        }
+    });
+    // Generic mapping for 'object' to avoid schema generation failures for open content
+    c.MapType<object>(() => new Microsoft.OpenApi.Models.OpenApiSchema
+    {
+        Type = "object"
+    });
+    
+    // Include XML comments if available
+    var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
+    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+    if (File.Exists(xmlPath))
+    {
+        c.IncludeXmlComments(xmlPath);
+    }
+    
+    // Be more permissive with schema generation
+    c.CustomSchemaIds(type => type.FullName?.Replace("+", "."));
+});
 
 // ---------- Метрики ----------
 var meter = new Meter("PeaceDatabase.WebApi", "1.0.0");
@@ -210,6 +246,7 @@ app.MapGet("/v1/_api", ([FromServices] IApiDescriptionGroupCollectionProvider pr
 .WithName("_api_catalog")
 .Produces(StatusCodes.Status200OK)
 .WithTags("_introspect");
+
 
 // ------------------------------------------------------------
 // 2) Фактические маршруты из EndpointDataSource (включая Minimal API)
