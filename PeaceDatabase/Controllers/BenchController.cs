@@ -1,21 +1,39 @@
+using System;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Diagnostics;
+using System.Linq;
 using System.Net.Http;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using System.IO;
-using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Google.Protobuf;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using PeaceDatabase.Core.Models;
+using PeaceDatabase.Protos;
 using PeaceDatabase.Storage.Binary;
 using PB = PeaceDatabase.Storage.Protobuf.ProtobufDocumentCodec;
-using PeaceDatabase.Protos;
-using Google.Protobuf;
 
 namespace PeaceDatabase.WebApi.Controllers
 {
+    // Статистика загрузки для проверки «полного объёма»
+    public sealed class LoadStats
+    {
+        public string FilePath { get; set; } = "";
+        public long FileSizeBytes { get; set; }
+        public string Sha256 { get; set; } = "";
+        public int ParsedDocuments { get; set; }
+        public int SkippedBadLines { get; set; }
+        public bool HitMaxDocs { get; set; }          // остановились из-за maxDocs
+        public bool ReachedEndOfFile { get; set; }    // дошли до конца файла
+        public bool ReadInFull => ReachedEndOfFile && !HitMaxDocs;
+    }
+
     [ApiController]
-    [Route("v1/bench")] 
+    [Route("v1/bench")]
     [Produces("application/json")]
     public sealed class BenchController : ControllerBase
     {
@@ -58,19 +76,25 @@ namespace PeaceDatabase.WebApi.Controllers
 
         [HttpPost("run")]
         [ProducesResponseType(typeof(RunResponse), StatusCodes.Status200OK)]
-        public async Task<IActionResult> Run([FromBody, Required] BenchRequest req)
+        public async Task<IActionResult> Run([FromBody, Required] BenchRequest req, CancellationToken ct)
         {
             // Load dataset
             List<Document> docs;
+            LoadStats? stats;
             try
             {
-                docs = await LoadDatasetAsync(req.Source, req.MaxDocs, req.RandomSeed);
+                (docs, stats) = await LoadDatasetAsync(req.Source, req.MaxDocs, req.RandomSeed, ct);
             }
             catch (Exception ex)
             {
                 return BadRequest(new { ok = false, error = ex.Message, source = req.Source });
             }
-            var scales = (req.Scales ?? new()).Distinct().OrderBy(x => x).Select(x => Math.Min(x, req.MaxDocs)).ToArray();
+
+            var scales = (req.Scales ?? new())
+                .Distinct()
+                .OrderBy(x => x)
+                .Select(x => Math.Min(x, req.MaxDocs))
+                .ToArray();
 
             var results = new List<BenchResult>();
 
@@ -86,12 +110,20 @@ namespace PeaceDatabase.WebApi.Controllers
                 // Avro disabled for build stability
             }
 
+            // Расширенная мета с проверкой «полного объёма»
             var meta = new
             {
                 source = req.Source.Kind,
                 path = req.Source.Path,
                 url = req.Source.Url,
-                total = docs.Count
+                total = docs.Count,
+                fileSizeBytes = stats?.FileSizeBytes,
+                sha256 = stats?.Sha256,
+                parsed = stats?.ParsedDocuments,
+                skippedBadLines = stats?.SkippedBadLines,
+                reachedEndOfFile = stats?.ReachedEndOfFile,
+                hitMaxDocs = stats?.HitMaxDocs,
+                readInFull = stats?.ReadInFull
             };
 
             return Ok(new RunResponse { Dataset = meta, Scales = scales, Results = results });
@@ -228,17 +260,31 @@ namespace PeaceDatabase.WebApi.Controllers
             };
         }
 
-        // Avro measurement removed
+        // ---------------- Dataset loading ----------------
 
-        private static async Task<List<Document>> LoadDatasetAsync(SourceConfig source, int maxDocs, int? seed)
+        private static async Task<(List<Document> Docs, LoadStats? Stats)> LoadDatasetAsync(
+            SourceConfig source, int maxDocs, int? seed, CancellationToken ct)
         {
-            return source.Kind.ToLowerInvariant() switch
+            switch (source.Kind.ToLowerInvariant())
             {
-                "synthetic" => GenerateSynthetic(maxDocs, seed),
-                "file" => await LoadFromFileAsync(source.Path!, maxDocs),
-                "url" => await LoadFromUrlAsync(source.Url!, maxDocs),
-                _ => GenerateSynthetic(maxDocs, seed)
-            };
+                case "synthetic":
+                    return (GenerateSynthetic(maxDocs, seed), null);
+
+                case "file":
+                    {
+                        var (docs, stats) = await LoadFromFileAsync(source.Path!, maxDocs, ct);
+                        return (docs, stats);
+                    }
+
+                case "url":
+                    {
+                        var (docs, stats) = await LoadFromUrlAsync(source.Url!, maxDocs, ct);
+                        return (docs, stats);
+                    }
+
+                default:
+                    return (GenerateSynthetic(maxDocs, seed), null);
+            }
         }
 
         private static List<Document> GenerateSynthetic(int maxDocs, int? seed)
@@ -256,7 +302,7 @@ namespace PeaceDatabase.WebApi.Controllers
                         ["age"] = 18 + (i % 60),
                         ["score"] = rnd.NextDouble() * 100.0,
                         ["active"] = (i % 3) == 0,
-                        ["tags"] = new List<string> { "kaggle", "bench", ((i%2)==0?"even":"odd") },
+                        ["tags"] = new List<string> { "kaggle", "bench", ((i % 2) == 0 ? "even" : "odd") },
                         ["nested"] = new Dictionary<string, object>
                         {
                             ["x"] = rnd.Next(0, 1000),
@@ -272,79 +318,146 @@ namespace PeaceDatabase.WebApi.Controllers
             return list;
         }
 
-        private static async Task<List<Document>> LoadFromFileAsync(string path, int maxDocs)
+        // Потоковая загрузка .json (array/object) и JSONL с диагностикой
+        private static async Task<(List<Document> Docs, LoadStats Stats)> LoadFromFileAsync(
+            string path, int maxDocs, CancellationToken ct)
         {
-            var abs = Path.IsPathRooted(path) ? path : Path.GetFullPath(path);
+            var abs = System.IO.Path.IsPathRooted(path) ? path : System.IO.Path.GetFullPath(path);
             if (!System.IO.File.Exists(abs))
-                throw new FileNotFoundException($"File not found: {abs}");
+                throw new System.IO.FileNotFoundException($"File not found: {abs}");
+
+            // Хэш и размер файла (для контроля целостности)
+            string sha256;
+            long size;
+            using (var fsHash = System.IO.File.Open(abs, System.IO.FileMode.Open, System.IO.FileAccess.Read, System.IO.FileShare.Read))
+            {
+                size = fsHash.Length;
+                using var sha = SHA256.Create();
+                var hash = await sha.ComputeHashAsync(fsHash, ct);
+                sha256 = Convert.ToHexString(hash);
+            }
 
             var list = new List<Document>(capacity: Math.Min(maxDocs, 10000));
-            var ext = Path.GetExtension(abs).ToLowerInvariant();
+            var stats = new LoadStats { FilePath = abs, FileSizeBytes = size, Sha256 = sha256 };
 
-            await using var fs = System.IO.File.OpenRead(abs);
+            var ext = System.IO.Path.GetExtension(abs).ToLowerInvariant();
+            await using var fs = System.IO.File.Open(abs, System.IO.FileMode.Open, System.IO.FileAccess.Read, System.IO.FileShare.Read);
 
             if (ext == ".json")
             {
-                using var jd = await JsonDocument.ParseAsync(fs);
-                var root = jd.RootElement;
-                int idx = 0;
-                if (root.ValueKind == JsonValueKind.Array)
+                // Определяем корень: массив или объект
+                fs.Seek(0, System.IO.SeekOrigin.Begin);
+                int first;
+                do { first = fs.ReadByte(); } while (first is 0x20 or 0x0A or 0x0D or 0x09); // пробелы/CR/LF/TAB
+
+                if (first == -1)
                 {
-                    foreach (var el in root.EnumerateArray())
-                    {
-                        if (list.Count >= maxDocs) break;
-                        list.Add(ConvertJson(idx++, el));
-                    }
+                    stats.ParsedDocuments = 0;
+                    stats.ReachedEndOfFile = true;
+                    return (list, stats);
                 }
-                else if (root.ValueKind == JsonValueKind.Object)
+
+                fs.Seek(-1, System.IO.SeekOrigin.Current);
+
+                if (first == (int)'[')
                 {
-                    list.Add(ConvertJson(idx++, root));
+                    var opts = new JsonSerializerOptions { DefaultBufferSize = 1 << 20 };
+                    await foreach (var el in JsonSerializer.DeserializeAsyncEnumerable<JsonElement>(fs, opts, ct))
+                    {
+                        if (list.Count >= maxDocs) { stats.HitMaxDocs = true; break; }
+                        list.Add(ConvertJson(list.Count, el));
+                    }
+                    stats.ParsedDocuments = list.Count;
+                    stats.ReachedEndOfFile = fs.Position == fs.Length;
+                }
+                else if (first == (int)'{')
+                {
+                    var el = await JsonSerializer.DeserializeAsync<JsonElement>(fs, options: null, ct);
+                    list.Add(ConvertJson(0, el));
+                    stats.ParsedDocuments = 1;
+                    stats.ReachedEndOfFile = true;
                 }
                 else
                 {
-                    throw new InvalidDataException("Unsupported JSON root (expected array or object)");
+                    throw new System.IO.InvalidDataException("Unsupported JSON root (expected array '[' or object '{').");
                 }
             }
             else
             {
-                using var sr = new StreamReader(fs, Encoding.UTF8);
+                // JSONL / NDJSON
+                using var sr = new System.IO.StreamReader(fs, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, bufferSize: 1 << 16);
                 string? line;
-                int idx = 0;
-                while ((line = await sr.ReadLineAsync()) != null && list.Count < maxDocs)
+                int skipped = 0;
+
+                while ((line = await sr.ReadLineAsync()) != null)
                 {
+                    ct.ThrowIfCancellationRequested();
+                    if (list.Count >= maxDocs) { stats.HitMaxDocs = true; break; }
                     if (string.IsNullOrWhiteSpace(line)) continue;
+
                     try
                     {
                         using var jd = JsonDocument.Parse(line);
-                        list.Add(ConvertJson(idx++, jd.RootElement));
+                        list.Add(ConvertJson(list.Count, jd.RootElement));
                     }
-                    catch { /* skip bad line */ }
+                    catch (JsonException)
+                    {
+                        skipped++;
+                    }
                 }
+
+                stats.ParsedDocuments = list.Count;
+                stats.SkippedBadLines = skipped;
+                stats.ReachedEndOfFile = sr.EndOfStream || fs.Position == fs.Length;
             }
 
-            return list;
+            return (list, stats);
         }
 
-        private static async Task<List<Document>> LoadFromUrlAsync(string url, int maxDocs)
+        private static async Task<(List<Document> Docs, LoadStats Stats)> LoadFromUrlAsync(
+            string url, int maxDocs, CancellationToken ct)
         {
             using var http = new HttpClient();
-            using var resp = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
+            using var resp = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
             resp.EnsureSuccessStatusCode();
-            await using var stream = await resp.Content.ReadAsStreamAsync();
-            using var sr = new StreamReader(stream, Encoding.UTF8);
+
+            await using var stream = await resp.Content.ReadAsStreamAsync(ct);
+            using var sr = new System.IO.StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, bufferSize: 1 << 16);
+
             var list = new List<Document>(capacity: Math.Min(maxDocs, 10000));
-            string? line; int idx = 0;
-            while ((line = await sr.ReadLineAsync()) != null && list.Count < maxDocs)
+            string? line;
+            int skipped = 0;
+
+            while ((line = await sr.ReadLineAsync()) != null)
             {
+                ct.ThrowIfCancellationRequested();
+                if (list.Count >= maxDocs) break;
                 if (string.IsNullOrWhiteSpace(line)) continue;
+
                 try
                 {
                     using var jd = JsonDocument.Parse(line);
-                    list.Add(ConvertJson(idx++, jd.RootElement));
+                    list.Add(ConvertJson(list.Count, jd.RootElement));
                 }
-                catch { /* skip */ }
+                catch (JsonException)
+                {
+                    skipped++;
+                }
             }
-            return list;
+
+            // Для URL размер/хэш файла не считаем
+            var stats = new LoadStats
+            {
+                FilePath = url,
+                FileSizeBytes = 0,
+                Sha256 = "",
+                ParsedDocuments = list.Count,
+                SkippedBadLines = skipped,
+                HitMaxDocs = list.Count >= maxDocs,
+                ReachedEndOfFile = sr.EndOfStream
+            };
+
+            return (list, stats);
         }
 
         private static Document ConvertJson(int idx, JsonElement root)
@@ -373,21 +486,23 @@ namespace PeaceDatabase.WebApi.Controllers
                     if (je.TryGetInt64(out var vl)) return vl;
                     return je.GetDouble();
                 case JsonValueKind.Array:
-                {
-                    var list = new List<object?>();
-                    foreach (var it in je.EnumerateArray()) list.Add(JsonToObject(it));
-                    return list;
-                }
+                    {
+                        var list = new List<object?>();
+                        foreach (var it in je.EnumerateArray()) list.Add(JsonToObject(it));
+                        return list;
+                    }
                 case JsonValueKind.Object:
-                {
-                    var dict = new Dictionary<string, object>(System.StringComparer.Ordinal);
-                    foreach (var prop in je.EnumerateObject()) dict[prop.Name] = JsonToObject(prop.Value)!;
-                    return dict;
-                }
+                    {
+                        var dict = new Dictionary<string, object>(StringComparer.Ordinal);
+                        foreach (var prop in je.EnumerateObject())
+                        {
+                            var val = JsonToObject(prop.Value);
+                            if (val != null) dict[prop.Name] = val;
+                        }
+                        return dict;
+                    }
                 default: return null;
             }
         }
     }
 }
-
-
