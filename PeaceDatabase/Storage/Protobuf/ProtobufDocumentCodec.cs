@@ -22,11 +22,8 @@ namespace PeaceDatabase.Storage.Protobuf
 
             if (d.Data != null)
             {
-                msg.Data = new Struct();
-                foreach (var kv in d.Data)
-                {
-                    msg.Data.Fields[kv.Key] = ToValue(kv.Value);
-                }
+                var protoReady = NormalizeForProtobuf(d.Data) as Dictionary<string, object>;
+                msg.Data = DictToStruct(protoReady ?? new Dictionary<string, object>());
             }
 
             return msg;
@@ -49,6 +46,14 @@ namespace PeaceDatabase.Storage.Protobuf
         private static Value ToValue(object? o)
         {
             if (o is null) return Value.ForNull();
+            // Special: handle general IEnumerable (but NOT string/char[])
+            if (o is System.Collections.IEnumerable enumerable && !(o is string))
+            {
+                var lv = new ListValue();
+                foreach(var item in enumerable)
+                    lv.Values.Add(ToValue(item));
+                return new Value { ListValue = lv };
+            }
             return o switch
             {
                 string s => Value.ForString(s),
@@ -57,7 +62,6 @@ namespace PeaceDatabase.Storage.Protobuf
                 long l => Value.ForNumber(l),
                 float f => Value.ForNumber(f),
                 double d => Value.ForNumber(d),
-                IEnumerable<string> list => new Value { ListValue = new ListValue { Values = { FromStrings(list) } } },
                 Dictionary<string, object> dict => new Value { StructValue = DictToStruct(dict) },
                 System.Text.Json.JsonElement je => JsonElementToValue(je),
                 _ => Value.ForString(o.ToString() ?? string.Empty)
@@ -142,6 +146,49 @@ namespace PeaceDatabase.Storage.Protobuf
                 }
                 default:
                     return Value.ForNull();
+            }
+        }
+
+        // Recursively normalize input to only protobuf-friendly forms
+        private static object? NormalizeForProtobuf(object? o)
+        {
+            if (o == null) return null;
+            switch (o)
+            {
+                case string s:
+                case int i:
+                case long l:
+                case double d:
+                case float f:
+                case bool b:
+                    return o;
+                case Dictionary<string, object> dict:
+                    var nd = new Dictionary<string, object>(dict.Count);
+                    foreach(var kv in dict)
+                        nd[kv.Key] = NormalizeForProtobuf(kv.Value);
+                    return nd;
+                case IDictionary<object, object> objdict:
+                    var nd2 = new Dictionary<string, object>(objdict.Count);
+                    foreach (var key in objdict.Keys)
+                        nd2[key?.ToString() ?? "null"] = NormalizeForProtobuf(objdict[key]);
+                    return nd2;
+                case System.Collections.IDictionary rawdict:
+                    var nd3 = new Dictionary<string, object>();
+                    foreach (var key in rawdict.Keys)
+                        nd3[key?.ToString() ?? "null"] = NormalizeForProtobuf(rawdict[key]);
+                    return nd3;
+                case IEnumerable<object> list:
+                    var nl = new List<object>();
+                    foreach(var item in list)
+                        nl.Add(NormalizeForProtobuf(item));
+                    return nl;
+                case System.Collections.IEnumerable rawlist:
+                    var nl2 = new List<object>();
+                    foreach(var item in rawlist)
+                        nl2.Add(NormalizeForProtobuf(item));
+                    return nl2;
+                default:
+                    return o.ToString() ?? string.Empty;
             }
         }
     }

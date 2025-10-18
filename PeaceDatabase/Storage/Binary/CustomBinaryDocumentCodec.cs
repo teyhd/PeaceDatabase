@@ -221,7 +221,7 @@ namespace PeaceDatabase.Storage.Binary
         }
 
         // --- Data (Dictionary<string, object>) ---
-        // Поддерживаем string, int, double, bool, null, list<string>, вложенные dict<string, object>
+        // Поддерживаем null, string, int, double, bool, list<object>, вложенные dict<string, object>
         private enum DataType : byte
         {
             Null = 0,
@@ -230,7 +230,8 @@ namespace PeaceDatabase.Storage.Binary
             Double = 3,
             Bool = 4,
             ListString = 5,
-            Dict = 6
+            Dict = 6,
+            ListObject = 7  // New type for proper array handling
         }
         private static byte[] SerializeData(Dictionary<string, object> data)
         {
@@ -261,6 +262,7 @@ namespace PeaceDatabase.Storage.Binary
                     DataType.Bool => ReadByte(ms) != 0,
                     DataType.ListString => ReadStringList(ms),
                     DataType.Dict => DeserializeData(ReadNested(ms)),
+                    DataType.ListObject => ReadObjectList(ms),
                     _ => throw new NotSupportedException($"Unknown DataType: {type}")
                 };
                 dict[key] = value!;
@@ -311,6 +313,14 @@ namespace PeaceDatabase.Storage.Binary
                             WriteString(s, item);
                         break;
                     }
+                case List<object> objList:
+                    {
+                        WriteByte(s, (byte)DataType.ListObject);
+                        WriteInt32LE(s, objList.Count);
+                        foreach (var item in objList)
+                            WriteDataValue(s, item);
+                        break;
+                    }
                 case Dictionary<string, object> dict:
                     {
                         WriteByte(s, (byte)DataType.Dict);
@@ -321,15 +331,15 @@ namespace PeaceDatabase.Storage.Binary
                     }
                 case System.Collections.IEnumerable enumerable:
                 {
-                    // Обобщённые массивы/списки -> сериализуем как ListString со строкификацией
-                    WriteByte(s, (byte)DataType.ListString);
-                    var tmp = new List<string>();
+                    // Convert to List<object> for proper nested structure handling
+                    var objList = new List<object>();
                     foreach (var item in enumerable)
                     {
-                        tmp.Add(item?.ToString() ?? string.Empty);
+                        objList.Add(item ?? (object)string.Empty);
                     }
-                    WriteInt32LE(s, tmp.Count);
-                    foreach (var str in tmp) WriteString(s, str);
+                    WriteByte(s, (byte)DataType.ListObject);
+                    WriteInt32LE(s, objList.Count);
+                    foreach (var obj in objList) WriteDataValue(s, obj);
                     break;
                 }
 
@@ -359,31 +369,12 @@ namespace PeaceDatabase.Storage.Binary
                     return false;
                 case System.Text.Json.JsonValueKind.Array:
                 {
-                    // Нормализуем массив в List<string>, строкифицируя элементы
-                    var list = new List<string>();
+                    // Properly handle arrays by preserving structure recursively
+                    var list = new List<object>();
                     foreach (var el in je.EnumerateArray())
                     {
-                        switch (el.ValueKind)
-                        {
-                            case System.Text.Json.JsonValueKind.String:
-                                list.Add(el.GetString() ?? string.Empty);
-                                break;
-                            case System.Text.Json.JsonValueKind.Number:
-                            case System.Text.Json.JsonValueKind.Object:
-                            case System.Text.Json.JsonValueKind.Array:
-                                list.Add(el.GetRawText());
-                                break;
-                            case System.Text.Json.JsonValueKind.True:
-                                list.Add("true");
-                                break;
-                            case System.Text.Json.JsonValueKind.False:
-                                list.Add("false");
-                                break;
-                            case System.Text.Json.JsonValueKind.Null:
-                            case System.Text.Json.JsonValueKind.Undefined:
-                                list.Add("null");
-                                break;
-                        }
+                        var item = JsonElementToClr(el);
+                        list.Add(item ?? (object)string.Empty);
                     }
                     return list;
                 }
@@ -408,6 +399,30 @@ namespace PeaceDatabase.Storage.Binary
             var list = new List<string>(count);
             for (int i = 0; i < count; i++)
                 list.Add(ReadString(s));
+            return list;
+        }
+
+        private static List<object> ReadObjectList(Stream s)
+        {
+            var count = ReadInt32LE(s);
+            var list = new List<object>(count);
+            for (int i = 0; i < count; i++)
+            {
+                var type = (DataType)ReadByte(s);
+                object? value = type switch
+                {
+                    DataType.Null => null,
+                    DataType.String => ReadString(s),
+                    DataType.Int => ReadInt32LE(s),
+                    DataType.Double => ReadDoubleLE(s),
+                    DataType.Bool => ReadByte(s) != 0,
+                    DataType.ListString => ReadStringList(s),
+                    DataType.Dict => DeserializeData(ReadNested(s)),
+                    DataType.ListObject => ReadObjectList(s),
+                    _ => throw new NotSupportedException($"Unknown DataType: {type}")
+                };
+                list.Add(value!);
+            }
             return list;
         }
 

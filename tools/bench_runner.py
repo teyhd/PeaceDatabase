@@ -234,7 +234,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--base-url", default="http://localhost:5000")
     ap.add_argument("--source", choices=["file", "url", "synthetic"], default="file")
-    ap.add_argument("--path-or-url", default="C:\\Users\\mit\\source\\repos\\PeaceDatabase\\tools\\AMZN.json")
+    ap.add_argument("--path-or-url", default="D:\\_ITMOStudy\\_Master\\OPVP\\PeaceDatabase\\tools\\AMZN.json")
 
     ap.add_argument("--max-docs", type=int, default=100000)
     ap.add_argument("--scales", default="1,10,100,1000,10000,1000000000")

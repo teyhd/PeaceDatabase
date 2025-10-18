@@ -19,7 +19,7 @@ using PB = PeaceDatabase.Storage.Protobuf.ProtobufDocumentCodec;
 
 namespace PeaceDatabase.WebApi.Controllers
 {
-    // Статистика загрузки для проверки «полного объёма»
+    // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
     public sealed class LoadStats
     {
         public string FilePath { get; set; } = "";
@@ -27,8 +27,8 @@ namespace PeaceDatabase.WebApi.Controllers
         public string Sha256 { get; set; } = "";
         public int ParsedDocuments { get; set; }
         public int SkippedBadLines { get; set; }
-        public bool HitMaxDocs { get; set; }          // остановились из-за maxDocs
-        public bool ReachedEndOfFile { get; set; }    // дошли до конца файла
+        public bool HitMaxDocs { get; set; }          // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ-пїЅпїЅ maxDocs
+        public bool ReachedEndOfFile { get; set; }    // пїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ
         public bool ReadInFull => ReachedEndOfFile && !HitMaxDocs;
     }
 
@@ -110,7 +110,7 @@ namespace PeaceDatabase.WebApi.Controllers
                 // Avro disabled for build stability
             }
 
-            // Расширенная мета с проверкой «полного объёма»
+            // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
             var meta = new
             {
                 source = req.Source.Kind,
@@ -151,7 +151,14 @@ namespace PeaceDatabase.WebApi.Controllers
                 last = new byte[docs.Count][];
                 for (int i = 0; i < docs.Count; i++)
                 {
-                    var b = JsonSerializer.SerializeToUtf8Bytes(docs[i]);
+                    // Use JsonSerializer with WriteIndented=false to ensure compact serialization
+                    // and consistent handling of nested structures
+                    var options = new JsonSerializerOptions 
+                    { 
+                        WriteIndented = false,
+                        DefaultBufferSize = 1 << 20
+                    };
+                    var b = JsonSerializer.SerializeToUtf8Bytes(docs[i], options);
                     totalBytes += b.Length;
                     last[i] = b;
                 }
@@ -318,7 +325,7 @@ namespace PeaceDatabase.WebApi.Controllers
             return list;
         }
 
-        // Потоковая загрузка .json (array/object) и JSONL с диагностикой
+        // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ .json (array/object) пїЅ JSONL пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
         private static async Task<(List<Document> Docs, LoadStats Stats)> LoadFromFileAsync(
             string path, int maxDocs, CancellationToken ct)
         {
@@ -326,7 +333,7 @@ namespace PeaceDatabase.WebApi.Controllers
             if (!System.IO.File.Exists(abs))
                 throw new System.IO.FileNotFoundException($"File not found: {abs}");
 
-            // Хэш и размер файла (для контроля целостности)
+            // пїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ (пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ)
             string sha256;
             long size;
             using (var fsHash = System.IO.File.Open(abs, System.IO.FileMode.Open, System.IO.FileAccess.Read, System.IO.FileShare.Read))
@@ -345,10 +352,10 @@ namespace PeaceDatabase.WebApi.Controllers
 
             if (ext == ".json")
             {
-                // Определяем корень: массив или объект
+                // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ: пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
                 fs.Seek(0, System.IO.SeekOrigin.Begin);
                 int first;
-                do { first = fs.ReadByte(); } while (first is 0x20 or 0x0A or 0x0D or 0x09); // пробелы/CR/LF/TAB
+                do { first = fs.ReadByte(); } while (first is 0x20 or 0x0A or 0x0D or 0x09); // пїЅпїЅпїЅпїЅпїЅпїЅпїЅ/CR/LF/TAB
 
                 if (first == -1)
                 {
@@ -445,7 +452,7 @@ namespace PeaceDatabase.WebApi.Controllers
                 }
             }
 
-            // Для URL размер/хэш файла не считаем
+            // пїЅпїЅпїЅ URL пїЅпїЅпїЅпїЅпїЅпїЅ/пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
             var stats = new LoadStats
             {
                 FilePath = url,
