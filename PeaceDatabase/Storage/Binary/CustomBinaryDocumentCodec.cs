@@ -221,7 +221,7 @@ namespace PeaceDatabase.Storage.Binary
         }
 
         // --- Data (Dictionary<string, object>) ---
-        // Поддерживаем string, int, double, bool, null, list<string>, вложенные dict<string, object>
+        // Поддерживаем null, string, int, double, bool, list<object>, вложенные dict<string, object>
         private enum DataType : byte
         {
             Null = 0,
@@ -230,7 +230,8 @@ namespace PeaceDatabase.Storage.Binary
             Double = 3,
             Bool = 4,
             ListString = 5,
-            Dict = 6
+            Dict = 6,
+            ListObject = 7  // New type for proper array handling
         }
         private static byte[] SerializeData(Dictionary<string, object> data)
         {
@@ -261,6 +262,7 @@ namespace PeaceDatabase.Storage.Binary
                     DataType.Bool => ReadByte(ms) != 0,
                     DataType.ListString => ReadStringList(ms),
                     DataType.Dict => DeserializeData(ReadNested(ms)),
+                    DataType.ListObject => ReadObjectList(ms),
                     _ => throw new NotSupportedException($"Unknown DataType: {type}")
                 };
                 dict[key] = value!;
@@ -311,6 +313,14 @@ namespace PeaceDatabase.Storage.Binary
                             WriteString(s, item);
                         break;
                     }
+                case List<object> objList:
+                    {
+                        WriteByte(s, (byte)DataType.ListObject);
+                        WriteInt32LE(s, objList.Count);
+                        foreach (var item in objList)
+                            WriteDataValue(s, item);
+                        break;
+                    }
                 case Dictionary<string, object> dict:
                     {
                         WriteByte(s, (byte)DataType.Dict);
@@ -319,6 +329,20 @@ namespace PeaceDatabase.Storage.Binary
                         s.Write(dictBytes, 0, dictBytes.Length);
                         break;
                     }
+                case System.Collections.IEnumerable enumerable:
+                {
+                    // Convert to List<object> for proper nested structure handling
+                    var objList = new List<object>();
+                    foreach (var item in enumerable)
+                    {
+                        objList.Add(item ?? (object)string.Empty);
+                    }
+                    WriteByte(s, (byte)DataType.ListObject);
+                    WriteInt32LE(s, objList.Count);
+                    foreach (var obj in objList) WriteDataValue(s, obj);
+                    break;
+                }
+
                 default:
                     throw new NotSupportedException($"Unsupported data type: {value.GetType().Name}");
             }
@@ -345,14 +369,12 @@ namespace PeaceDatabase.Storage.Binary
                     return false;
                 case System.Text.Json.JsonValueKind.Array:
                 {
-                    // Поддерживаем только массив строк => ListString
-                    var list = new List<string>();
+                    // Properly handle arrays by preserving structure recursively
+                    var list = new List<object>();
                     foreach (var el in je.EnumerateArray())
                     {
-                        if (el.ValueKind == System.Text.Json.JsonValueKind.String)
-                            list.Add(el.GetString()!);
-                        else
-                            throw new NotSupportedException("Only arrays of strings are supported in Data");
+                        var item = JsonElementToClr(el);
+                        list.Add(item ?? (object)string.Empty);
                     }
                     return list;
                 }
@@ -377,6 +399,30 @@ namespace PeaceDatabase.Storage.Binary
             var list = new List<string>(count);
             for (int i = 0; i < count; i++)
                 list.Add(ReadString(s));
+            return list;
+        }
+
+        private static List<object> ReadObjectList(Stream s)
+        {
+            var count = ReadInt32LE(s);
+            var list = new List<object>(count);
+            for (int i = 0; i < count; i++)
+            {
+                var type = (DataType)ReadByte(s);
+                object? value = type switch
+                {
+                    DataType.Null => null,
+                    DataType.String => ReadString(s),
+                    DataType.Int => ReadInt32LE(s),
+                    DataType.Double => ReadDoubleLE(s),
+                    DataType.Bool => ReadByte(s) != 0,
+                    DataType.ListString => ReadStringList(s),
+                    DataType.Dict => DeserializeData(ReadNested(s)),
+                    DataType.ListObject => ReadObjectList(s),
+                    _ => throw new NotSupportedException($"Unknown DataType: {type}")
+                };
+                list.Add(value!);
+            }
             return list;
         }
 

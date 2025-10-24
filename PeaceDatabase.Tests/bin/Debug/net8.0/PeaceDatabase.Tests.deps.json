@@ -360,6 +360,17 @@
           "lib/net6.0/FluentAssertions.dll": {}
         }
       },
+      "Google.Protobuf/3.25.3": {
+        "runtime": {
+          "lib/net5.0/Google.Protobuf.dll": {
+            "assemblyVersion": "3.25.3.0",
+            "fileVersion": "3.25.3.0"
+          }
+        },
+        "compile": {
+          "lib/net5.0/Google.Protobuf.dll": {}
+        }
+      },
       "Microsoft.AspNetCore.Mvc.Testing/8.0.8": {
         "dependencies": {
           "Microsoft.AspNetCore.TestHost": "8.0.8",
@@ -1057,6 +1068,7 @@
       "xunit.runner.visualstudio/2.5.7": {},
       "PeaceDatabase/1.0.0": {
         "dependencies": {
+          "Google.Protobuf": "3.25.3",
           "Microsoft.Extensions.Configuration.Binder": "9.0.0",
           "Microsoft.VisualStudio.Azure.Containers.Tools.Targets": "1.22.1",
           "Swashbuckle.AspNetCore": "6.6.2"
@@ -2873,6 +2885,13 @@
       "sha512": "sha512-h5tb0odkLRWuwjc5EhwHQZpZm7+5YmJBNn379tJPIK04FOv3tuOfhGZTPFSuj/MTgzfV6UlAjfbSEBcEGhGucQ==",
       "path": "fluentassertions/8.6.0",
       "hashPath": "fluentassertions.8.6.0.nupkg.sha512"
+    },
+    "Google.Protobuf/3.25.3": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-fDY/kt0gy2nVcoeMmiyDMtwgvDJG5qaU7+Ic77szKTvVkIvoo7tyf+d+QDlKSosB+FjoKocX/ObObxqKCq60uA==",
+      "path": "google.protobuf/3.25.3",
+      "hashPath": "google.protobuf.3.25.3.nupkg.sha512"
     },
     "Microsoft.AspNetCore.Mvc.Testing/8.0.8": {
       "type": "package",
