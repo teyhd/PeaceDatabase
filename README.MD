@@ -34,7 +34,7 @@
 
 ### API Layer
 
-- **DbController** — базовые CRUD-операции, _all_docs, _changes.
+- **DbAndDocumentsController** — CRUD-операции, поиск, быстрая статистика по БД и другое.
 - **AttachmentsController** — работа с вложениями (PUT/GET/DELETE).
 - **ReplicationController** — интерфейс для репликации (push/pull).
 
@@ -62,7 +62,7 @@
 
 - **Core**: Document, IDocumentService.
 - **Storage**: InMemoryDocumentService (in-memory CRUD, AllDocs, Changes).
-- **API**: DbController (эндпоинты для CRUD и просмотра изменений).
+- **API**: DbAndDocumentsController (эндпоинты для CRUD и просмотра изменений).
 
 [![Architecture Diagram1](docs/images/Lab1.png)](docs/images/Lab1.png)
 
