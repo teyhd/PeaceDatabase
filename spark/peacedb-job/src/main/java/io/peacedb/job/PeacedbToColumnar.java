@@ -26,16 +26,19 @@ public class PeacedbToColumnar {
                 .config("spark.hadoop.fs.AbstractFileSystem.file.impl", "org.apache.hadoop.fs.local.LocalFs")
                 .getOrCreate();
 
-        int[] limits = new int[] { 1, 10, 100, 1000 };
+        int[] limits = new int[] { 1, 10, 100, 1000, 10000, 100000 };
         Path out = Paths.get(a.outDir);
         Files.createDirectories(out);
 
         Path metricsPath = out.resolve("metrics.csv");
-        boolean writeHeader = !Files.exists(metricsPath);
-        try (FileWriter fw = new FileWriter(metricsPath.toFile(), true)) {
-            if (writeHeader) {
+        boolean append = a.appendMetrics;
+        boolean writeHeader = true;
+        if (append && Files.exists(metricsPath)) {
+            writeHeader = false;
+        }
+        try (FileWriter fw = new FileWriter(metricsPath.toFile(), append == true)) {
+            if (writeHeader)
                 fw.write("n,format,bytes,write_ms,read_ms,rows\n");
-            }
 
             for (int n : limits) {
                 Dataset<Row> df = spark.read()
@@ -43,6 +46,10 @@ public class PeacedbToColumnar {
                         .option("baseUrl", a.baseUrl)
                         .option("db", a.db)
                         .option("pageSize", Integer.toString(Math.min(a.pageSize, n)))
+                        .option("connectTimeoutMs", Integer.toString(a.connectTimeoutMs))
+                        .option("readTimeoutMs", Integer.toString(a.readTimeoutMs))
+                        .option("retries", Integer.toString(a.retries))
+                        .option("retryBackoffMs", Integer.toString(a.retryBackoffMs))
                         .option("maxRows", Integer.toString(n))
                         .option("includeDeleted", Boolean.toString(a.includeDeleted))
                         .load();
@@ -73,6 +80,17 @@ public class PeacedbToColumnar {
                 Files.createDirectories(outParquet);
                 Files.createDirectories(outOrc);
 
+                // Warm-up: cache transformed data and perform tiny writes/reads to pay one-time
+                // costs
+                tr.persist();
+                tr.count();
+                Path warmParquet = out.resolve("_warmup_parquet");
+                Path warmOrc = out.resolve("_warmup_orc");
+                tr.limit(1).write().mode("overwrite").parquet(warmParquet.toString());
+                tr.limit(1).write().mode("overwrite").orc(warmOrc.toString());
+                spark.read().parquet(warmParquet.toString()).count();
+                spark.read().orc(warmOrc.toString()).count();
+
                 long t0 = System.nanoTime();
                 tr.write().mode("overwrite").parquet(outParquet.toString());
                 long t1 = System.nanoTime();
@@ -94,6 +112,8 @@ public class PeacedbToColumnar {
                         n, orcSize, (t2 - t1) / 1e6, (r2 - r1) / 1e6, oc);
                 fw.write(lineParquet);
                 fw.write(lineOrc);
+
+                tr.unpersist();
             }
         }
 
@@ -118,6 +138,11 @@ public class PeacedbToColumnar {
         String outDir = "./out";
         int pageSize = 100;
         boolean includeDeleted = false;
+        boolean appendMetrics = false;
+        int connectTimeoutMs = 10000;
+        int readTimeoutMs = 60000;
+        int retries = 3;
+        int retryBackoffMs = 500;
 
         static Arguments parse(String[] args) {
             Arguments a = new Arguments();
@@ -137,6 +162,24 @@ public class PeacedbToColumnar {
                         break;
                     case "--includeDeleted":
                         a.includeDeleted = Boolean.parseBoolean(args[++i]);
+                        break;
+                    case "--appendMetrics":
+                        a.appendMetrics = Boolean.parseBoolean(args[++i]);
+                        break;
+                    case "--connectTimeoutMs":
+                        a.connectTimeoutMs = Integer.parseInt(args[++i]);
+                        break;
+                    case "--readTimeoutMs":
+                        a.readTimeoutMs = Integer.parseInt(args[++i]);
+                        break;
+                    case "--retries":
+                        a.retries = Integer.parseInt(args[++i]);
+                        break;
+                    case "--retryBackoffMs":
+                        a.retryBackoffMs = Integer.parseInt(args[++i]);
+                        break;
+                    default:
+                        // ignore unknown
                         break;
                 }
             }

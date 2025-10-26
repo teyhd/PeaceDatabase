@@ -2,6 +2,10 @@
 
 Build requires JDK 11+, Maven, Spark 3.5.1. PeaceDatabase Web API must run at `http://localhost:5000`.
 
+Data source features:
+- Plans partitions using fast `/v1/db/{db}/_stats` (no page probing for large datasets)
+- Configurable timeouts and automatic HTTP retries
+
 ### Build
 
 ```
@@ -22,9 +26,22 @@ spark-submit \
   --baseUrl http://localhost:5000 \
   --db news \
   --outDir ./out \
-  --pageSize 200
+  --pageSize 200 \
+  --connectTimeoutMs 10000 \
+  --readTimeoutMs 60000 \
+  --retries 3 \
+  --retryBackoffMs 500
 ```
 
-Outputs: `out/parquet`, `out/orc`, and `out/metrics.csv` with size and timing.
+Outputs: `out/parquet_*`, `out/orc_*`, and `out/metrics.csv` with size and timing.
+
+Connector options (Spark.read.format("peacedb")):
+- `baseUrl` (default `http://localhost:5000`)
+- `db` (default `news`)
+- `pageSize` (default `100`)
+- `includeDeleted` (default `false`)
+- `maxRows` (for benchmarking)
+- `connectTimeoutMs` / `readTimeoutMs`
+- `retries` / `retryBackoffMs`
 
 

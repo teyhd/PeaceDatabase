@@ -43,24 +43,16 @@ public class PeacedbScan implements Scan, Batch {
         if (maxRows != null) {
             total = maxRows;
         } else {
-            // Probe pages to estimate total since API returns page count in 'total'.
-            long counted = 0;
-            while (true) {
-                int limit = pageSize;
-                int skip = (int) counted;
-                java.util.List<io.peacedb.spark.model.Document> items = client.fetchPage(db, skip, limit,
+            // Prefer fast stats endpoint if available
+            try {
+                var stats = client.fetchDbStats(db);
+                total = includeDeleted ? stats.docsTotal : stats.docsAlive;
+            } catch (RuntimeException e) {
+                // Fallback: light probe of first page to avoid full scan
+                java.util.List<io.peacedb.spark.model.Document> items = client.fetchPage(db, 0, pageSize,
                         includeDeleted);
-                int got = items != null ? items.size() : 0;
-                if (got <= 0)
-                    break;
-                counted += got;
-                if (got < limit)
-                    break; // last page
-                // Safety cap to avoid excessive planning
-                if (counted >= 1_000_000)
-                    break;
+                total = items != null ? items.size() : 0;
             }
-            total = counted;
         }
 
         if (total <= 0) {

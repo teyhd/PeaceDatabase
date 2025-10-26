@@ -58,7 +58,7 @@ def main() -> None:
     if not latest:
         raise SystemExit("No data in metrics CSV")
 
-    fig, ax = plt.subplots(1, 3, figsize=(13, 4))
+    fig, ax = plt.subplots(1, 3, figsize=(14, 4.5))
 
     # Size (MB)
     x_pq, y_pq = build_series(latest, "parquet", "bytes")

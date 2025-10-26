@@ -97,7 +97,8 @@ public class DbApiController : ControllerBase
     public IActionResult AllDocs([FromRoute] string db, [FromQuery] int? skip, [FromQuery] int? limit, [FromQuery] bool? includeDeleted)
     {
         var docs = _svc.AllDocs(db, skip ?? 0, limit ?? 100, includeDeleted ?? true);
-        return Ok(new AllDocsResponse { Total = docs?.Count() ?? 0, Items = docs });
+        var list = docs?.ToList() ?? new List<Document>();
+        return Ok(new AllDocsResponse { Total = list.Count, Items = list });
     }
 
     // GET /v1/db/{db}/_seq
@@ -107,6 +108,15 @@ public class DbApiController : ControllerBase
     {
         var seq = _svc.Seq(db);
         return Ok(new SequenceResponse { Db = db, Seq = seq });
+    }
+
+    // GET /v1/db/{db}/_stats
+    [HttpGet("{db}/_stats")]
+    [ProducesResponseType(typeof(StatsDto), StatusCodes.Status200OK)]
+    public IActionResult DbStats([FromRoute] string db)
+    {
+        var stats = _svc.Stats(db);
+        return Ok(stats);
     }
 
     // ---- Поиск по полям ----

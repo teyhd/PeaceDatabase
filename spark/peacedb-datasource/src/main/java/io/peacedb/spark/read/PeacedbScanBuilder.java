@@ -23,8 +23,10 @@ public class PeacedbScanBuilder implements ScanBuilder {
         final Integer maxRows = options.containsKey("maxRows") ? Integer.parseInt(options.get("maxRows")) : null;
         final int connectTimeoutMs = Integer.parseInt(options.getOrDefault("connectTimeoutMs", "5000"));
         final int readTimeoutMs = Integer.parseInt(options.getOrDefault("readTimeoutMs", "15000"));
+        final int retries = Integer.parseInt(options.getOrDefault("retries", "3"));
+        final int retryBackoffMs = Integer.parseInt(options.getOrDefault("retryBackoffMs", "500"));
 
-        ApiClient client = new ApiClient(baseUrl, connectTimeoutMs, readTimeoutMs);
+        ApiClient client = new ApiClient(baseUrl, connectTimeoutMs, readTimeoutMs, retries, retryBackoffMs);
         return new PeacedbScan(PeacedbTable.SCHEMA, client, db, pageSize, includeDeleted, maxRows);
     }
 

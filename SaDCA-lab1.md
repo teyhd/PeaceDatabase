@@ -18,11 +18,11 @@
 
 ## Сравнение сериализации/десериализации документов в разных форматах (JSON, Binary, Protobuf)
 
-![Serialize](tools/docs/benchmarks_news/bytes_per_doc.png)
+![Serialize](tools/docs/SaDCA-lab1-custom-protobuf/benchmark_news/bytes_per_doc.png)
 
-![Deserialize](tools/docs/benchmarks_news/deserialize_vs_n.png)
+![Deserialize](tools/docs/SaDCA-lab1-custom-protobuf/benchmark_news/deserialize_vs_n.png)
 
-![BytesPerDoc](tools/docs/benchmarks_news/bytes_per_doc.png)
+![BytesPerDoc](tools/docs/SaDCA-lab1-custom-protobuf/benchmark_news/bytes_per_doc.png)
 
 
 ### Цели

@@ -46,6 +46,11 @@ namespace PeaceDatabase.Core.Services
         /// </summary>
         int Seq(string db);
 
+        /// <summary>
+        /// Статистика по базе (число документов, токены и т.д.).
+        /// </summary>
+        StatsDto Stats(string db);
+
         // ---------- Поиск ----------
         /// <summary>
         /// Поиск документов по равенствам полей и (опц.) числовому диапазону.
