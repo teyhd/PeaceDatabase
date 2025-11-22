@@ -162,7 +162,7 @@ peacedb: insert=2073506.7 ms, read=1464877.1 ms (insert/doc=20.7351 ms, read/doc
 
 График:
 
-![DB benchmark summary](db_bench.png)
+![DB benchmark summary](docs/benchmarks/db_bench.png)
 
 
 - **Вставка**
