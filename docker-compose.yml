@@ -1,0 +1,57 @@
+version: "3.9"
+
+services:
+  peacedb:
+    build:
+      context: ./PeaceDatabase
+      dockerfile: Dockerfile
+    container_name: peacedb
+    environment:
+      - ASPNETCORE_URLS=http://+:8080
+      - STORAGE_MODE=File
+      - STORAGE_DATA_ROOT=/data
+    ports:
+      - "8080:8080"
+    volumes:
+      - peacedb_data:/data
+    depends_on:
+      - mongo
+      - couchdb
+    networks:
+      - benchnet
+
+  mongo:
+    image: mongo:7
+    container_name: mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - benchnet
+
+  couchdb:
+    image: couchdb:3
+    container_name: couchdb
+    restart: unless-stopped
+    environment:
+      - COUCHDB_USER=admin
+      - COUCHDB_PASSWORD=admin
+    ports:
+      - "5984:5984"
+    volumes:
+      - couchdb_data:/opt/couchdb/data
+    networks:
+      - benchnet
+
+networks:
+  benchnet:
+    driver: bridge
+
+volumes:
+  peacedb_data:
+  mongo_data:
+  couchdb_data:
+
+

@@ -1,0 +1,4 @@
+engine,n,insertMs,readMs
+peacedb,1000,21467.221,14140.256
+mongo,1000,123.928,3070.029
+couchdb,1000,568.135,15391.660
