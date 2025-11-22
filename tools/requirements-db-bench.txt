@@ -1,0 +1,5 @@
+requests>=2.31.0
+pymongo>=4.7.0
+matplotlib>=3.7.0
+
+
