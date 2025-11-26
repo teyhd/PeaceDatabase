@@ -1,6 +1,17 @@
-version: "3.9"
-
 services:
+  # Custom GZIP compression tool (run with: docker-compose run gzip benchmark)
+  gzip:
+    build:
+      context: .
+      dockerfile: PeaceDatabase.Gzip/Dockerfile
+    container_name: peacedb-gzip
+    volumes:
+      - ./data:/data
+    profiles:
+      - tools
+    networks:
+      - benchnet
+
   peacedb:
     build:
       context: ./PeaceDatabase
