@@ -83,7 +83,7 @@ public sealed class BitReader
 {
     private readonly byte[] _data;
     private int _bytePos;
-    private uint _bitBuffer;  // Use uint to avoid sign issues
+    private uint _bitBuffer;  // Must be uint to avoid sign extension on right shifts
     private int _bitCount;
 
     public BitReader(byte[] data)
@@ -99,6 +99,7 @@ public sealed class BitReader
 
     /// <summary>
     /// Ensure at least numBits are in the buffer.
+    /// Only load bytes while _bitCount < 25 to prevent overflow when shifting.
     /// </summary>
     private void EnsureBits(int numBits)
     {
