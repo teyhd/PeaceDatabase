@@ -1,0 +1,139 @@
+# docker-compose.sharding.yml
+# Развёртывание PeaceDatabase в шардированном режиме
+#
+# Запуск:
+#   docker-compose -f docker-compose.sharding.yml up --build
+#
+# Архитектура:
+#   - peacedb-router: Координатор/роутер (единая точка входа)
+#   - peacedb-shard-0, peacedb-shard-1, peacedb-shard-2: Шарды данных
+
+services:
+  # ========================================
+  # ROUTER - Координатор запросов
+  # ========================================
+  peacedb-router:
+    build:
+      context: ./PeaceDatabase
+      dockerfile: Dockerfile
+    container_name: peacedb-router
+    hostname: peacedb-router
+    environment:
+      - ASPNETCORE_URLS=http://+:8080
+      - ASPNETCORE_ENVIRONMENT=Production
+      - STORAGE_MODE=Sharded
+      - SHARDING_ENABLED=true
+      - SHARDING_MODE=Distributed
+      - SHARD_COUNT=3
+      # Роутер не имеет CURRENT_SHARD_ID
+    ports:
+      - "8080:8080"
+    depends_on:
+      - peacedb-shard-0
+      - peacedb-shard-1
+      - peacedb-shard-2
+    networks:
+      - shardnet
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ========================================
+  # SHARD 0
+  # ========================================
+  peacedb-shard-0:
+    build:
+      context: ./PeaceDatabase
+      dockerfile: Dockerfile
+    container_name: peacedb-shard-0
+    hostname: peacedb-shard-0
+    environment:
+      - ASPNETCORE_URLS=http://+:8080
+      - ASPNETCORE_ENVIRONMENT=Production
+      - STORAGE_MODE=File
+      - STORAGE_DATA_ROOT=/data
+      - SHARDING_ENABLED=true
+      - SHARDING_MODE=Distributed
+      - SHARD_COUNT=3
+      - CURRENT_SHARD_ID=0
+    volumes:
+      - shard0_data:/data
+    networks:
+      - shardnet
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ========================================
+  # SHARD 1
+  # ========================================
+  peacedb-shard-1:
+    build:
+      context: ./PeaceDatabase
+      dockerfile: Dockerfile
+    container_name: peacedb-shard-1
+    hostname: peacedb-shard-1
+    environment:
+      - ASPNETCORE_URLS=http://+:8080
+      - ASPNETCORE_ENVIRONMENT=Production
+      - STORAGE_MODE=File
+      - STORAGE_DATA_ROOT=/data
+      - SHARDING_ENABLED=true
+      - SHARDING_MODE=Distributed
+      - SHARD_COUNT=3
+      - CURRENT_SHARD_ID=1
+    volumes:
+      - shard1_data:/data
+    networks:
+      - shardnet
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ========================================
+  # SHARD 2
+  # ========================================
+  peacedb-shard-2:
+    build:
+      context: ./PeaceDatabase
+      dockerfile: Dockerfile
+    container_name: peacedb-shard-2
+    hostname: peacedb-shard-2
+    environment:
+      - ASPNETCORE_URLS=http://+:8080
+      - ASPNETCORE_ENVIRONMENT=Production
+      - STORAGE_MODE=File
+      - STORAGE_DATA_ROOT=/data
+      - SHARDING_ENABLED=true
+      - SHARDING_MODE=Distributed
+      - SHARD_COUNT=3
+      - CURRENT_SHARD_ID=2
+    volumes:
+      - shard2_data:/data
+    networks:
+      - shardnet
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  shardnet:
+    driver: bridge
+
+volumes:
+  shard0_data:
+  shard1_data:
+  shard2_data:
+
