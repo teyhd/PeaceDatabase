@@ -20,6 +20,10 @@ using PeaceDatabase.WebApi.Controllers;
 using PeaceDatabase.Storage.Disk;
 using PeaceDatabase.Storage.Disk.Internals;
 
+// ===== Sharding mode (распределённое хранилище)
+using PeaceDatabase.Storage.Sharding;
+using PeaceDatabase.Storage.Sharding.Configuration;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // ---------- JSON ----------
@@ -39,15 +43,21 @@ builder.Services
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 
-// ---------- Режим хранения (InMemory | File) ----------
+// ---------- Режим хранения (InMemory | File | Sharded) ----------
 string storageMode =
     builder.Configuration["Storage:Mode"]
     ?? Environment.GetEnvironmentVariable("STORAGE_MODE")
     ?? "InMemory";
 
-storageMode = storageMode.Equals("File", StringComparison.OrdinalIgnoreCase) ? "File" : "InMemory";
+// Нормализация режима
+storageMode = storageMode.ToLowerInvariant() switch
+{
+    "file" => "File",
+    "sharded" => "Sharded",
+    _ => "InMemory"
+};
 
-// Настройки файлового хранилища (используются только при File)
+// Настройки файлового хранилища
 var dataRoot = builder.Configuration["Storage:DataRoot"]
                ?? Environment.GetEnvironmentVariable("STORAGE_DATA_ROOT")
                ?? Path.Combine(AppContext.BaseDirectory, "data");
@@ -56,13 +66,45 @@ var storageOptions = new StorageOptions
 {
     DataRoot = dataRoot,
     EnableSnapshots = true,
-    SnapshotEveryNOperations = 500, // под себя
+    SnapshotEveryNOperations = 500,
     SnapshotMaxWalSizeMb = 64,
     Durability = DurabilityLevel.Commit
 };
 
+// ---------- Sharding Configuration ----------
+var shardingOptions = new ShardingOptions();
+builder.Configuration.GetSection("Sharding").Bind(shardingOptions);
+
+// Переопределение через переменные окружения
+if (bool.TryParse(Environment.GetEnvironmentVariable("SHARDING_ENABLED"), out var shardingEnabled))
+    shardingOptions.Enabled = shardingEnabled;
+
+if (int.TryParse(Environment.GetEnvironmentVariable("SHARD_COUNT"), out var shardCount))
+    shardingOptions.ShardCount = shardCount;
+
+if (int.TryParse(Environment.GetEnvironmentVariable("CURRENT_SHARD_ID"), out var currentShardId))
+    shardingOptions.CurrentShardId = currentShardId;
+
+var shardingModeEnv = Environment.GetEnvironmentVariable("SHARDING_MODE");
+if (!string.IsNullOrEmpty(shardingModeEnv))
+    shardingOptions.Mode = shardingModeEnv.Equals("Distributed", StringComparison.OrdinalIgnoreCase)
+        ? ShardingMode.Distributed
+        : ShardingMode.Local;
+
 // ---------- DI ----------
-if (storageMode == "File")
+if (storageMode == "Sharded" || shardingOptions.Enabled)
+{
+    storageMode = "Sharded";
+    builder.Services.AddHttpClient();
+    builder.Services.AddSingleton<IDocumentService>(sp =>
+    {
+        var httpFactory = sp.GetService<IHttpClientFactory>();
+        var loggerFactory = sp.GetService<ILoggerFactory>();
+        var effectiveStorageOptions = shardingOptions.Mode == ShardingMode.Local ? storageOptions : null;
+        return ShardingServiceBuilder.Build(shardingOptions, effectiveStorageOptions, httpFactory, loggerFactory);
+    });
+}
+else if (storageMode == "File")
 {
     builder.Services.AddSingleton<IDocumentService>(_ => new FileDocumentService(storageOptions));
 }
@@ -194,6 +236,13 @@ app.MapGet("/v1/_stats", () => Results.Ok(new
     service = "PeaceDatabase.WebApi",
     version = "1.0.0",
     storageMode,
+    sharding = new
+    {
+        enabled = shardingOptions.Enabled || storageMode == "Sharded",
+        mode = shardingOptions.Mode.ToString(),
+        shardCount = shardingOptions.ShardCount,
+        currentShardId = shardingOptions.CurrentShardId
+    },
     timeUtc = DateTime.UtcNow
 }));
 
