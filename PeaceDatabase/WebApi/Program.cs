@@ -24,6 +24,10 @@ using PeaceDatabase.Storage.Disk.Internals;
 using PeaceDatabase.Storage.Sharding;
 using PeaceDatabase.Storage.Sharding.Configuration;
 
+// ===== Replication mode (репликация для отказоустойчивости)
+using PeaceDatabase.Storage.Sharding.Replication;
+using PeaceDatabase.Storage.Sharding.Replication.Configuration;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // ---------- JSON ----------
@@ -91,18 +95,53 @@ if (!string.IsNullOrEmpty(shardingModeEnv))
         ? ShardingMode.Distributed
         : ShardingMode.Local;
 
+// ---------- Replication Configuration ----------
+if (bool.TryParse(Environment.GetEnvironmentVariable("REPLICATION_ENABLED"), out var replicationEnabled))
+    shardingOptions.Replication.Enabled = replicationEnabled;
+
+if (int.TryParse(Environment.GetEnvironmentVariable("REPLICA_COUNT"), out var replicaCount))
+    shardingOptions.Replication.ReplicaCount = replicaCount;
+
+if (int.TryParse(Environment.GetEnvironmentVariable("WRITE_QUORUM"), out var writeQuorum))
+    shardingOptions.Replication.WriteQuorum = writeQuorum;
+
+if (int.TryParse(Environment.GetEnvironmentVariable("READ_QUORUM"), out var readQuorum))
+    shardingOptions.Replication.ReadQuorum = readQuorum;
+
+if (int.TryParse(Environment.GetEnvironmentVariable("CURRENT_REPLICA_INDEX"), out var currentReplicaIndex))
+    shardingOptions.Replication.CurrentReplicaIndex = currentReplicaIndex;
+
+// Регистрируем ShardingOptions для DI (нужно для ReplicationController)
+builder.Services.AddSingleton(shardingOptions);
+
 // ---------- DI ----------
 if (storageMode == "Sharded" || shardingOptions.Enabled)
 {
     storageMode = "Sharded";
     builder.Services.AddHttpClient();
-    builder.Services.AddSingleton<IDocumentService>(sp =>
+    
+    if (shardingOptions.Replication.Enabled)
     {
-        var httpFactory = sp.GetService<IHttpClientFactory>();
-        var loggerFactory = sp.GetService<ILoggerFactory>();
-        var effectiveStorageOptions = shardingOptions.Mode == ShardingMode.Local ? storageOptions : null;
-        return ShardingServiceBuilder.Build(shardingOptions, effectiveStorageOptions, httpFactory, loggerFactory);
-    });
+        // Режим с репликацией - кворумные записи, автоматический failover
+        builder.Services.AddSingleton<IDocumentService>(sp =>
+        {
+            var httpFactory = sp.GetService<IHttpClientFactory>();
+            var loggerFactory = sp.GetService<ILoggerFactory>();
+            var effectiveStorageOptions = shardingOptions.Mode == ShardingMode.Local ? storageOptions : null;
+            return ReplicationServiceBuilder.Build(shardingOptions, effectiveStorageOptions, httpFactory, loggerFactory);
+        });
+    }
+    else
+    {
+        // Обычное шардирование без репликации
+        builder.Services.AddSingleton<IDocumentService>(sp =>
+        {
+            var httpFactory = sp.GetService<IHttpClientFactory>();
+            var loggerFactory = sp.GetService<ILoggerFactory>();
+            var effectiveStorageOptions = shardingOptions.Mode == ShardingMode.Local ? storageOptions : null;
+            return ShardingServiceBuilder.Build(shardingOptions, effectiveStorageOptions, httpFactory, loggerFactory);
+        });
+    }
 }
 else if (storageMode == "File")
 {
@@ -242,6 +281,15 @@ app.MapGet("/v1/_stats", () => Results.Ok(new
         mode = shardingOptions.Mode.ToString(),
         shardCount = shardingOptions.ShardCount,
         currentShardId = shardingOptions.CurrentShardId
+    },
+    replication = new
+    {
+        enabled = shardingOptions.Replication.Enabled,
+        replicaCount = shardingOptions.Replication.ReplicaCount,
+        writeQuorum = shardingOptions.Replication.WriteQuorum,
+        readQuorum = shardingOptions.Replication.ReadQuorum,
+        syncMode = shardingOptions.Replication.SyncMode.ToString(),
+        currentReplicaIndex = shardingOptions.Replication.CurrentReplicaIndex
     },
     timeUtc = DateTime.UtcNow
 }));

@@ -1,3 +1,5 @@
+using PeaceDatabase.Storage.Sharding.Replication.Configuration;
+
 namespace PeaceDatabase.Storage.Sharding.Configuration;
 
 /// <summary>
@@ -40,6 +42,16 @@ public sealed class ShardingOptions
     /// Статический список шардов (используется при Discovery.Type = Static).
     /// </summary>
     public List<ShardEndpoint> Shards { get; set; } = new();
+
+    /// <summary>
+    /// Настройки репликации для отказоустойчивости.
+    /// </summary>
+    public ReplicationOptions Replication { get; set; } = new();
+
+    /// <summary>
+    /// Статический список наборов реплик (используется при Replication.Enabled и Discovery.Type = Static).
+    /// </summary>
+    public List<ReplicaSetConfig> ReplicaSets { get; set; } = new();
 
     /// <summary>
     /// Таймаут HTTP-запросов к шардам (в секундах).

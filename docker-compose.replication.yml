@@ -1,0 +1,306 @@
+# docker-compose.replication.yml
+# Развёртывание PeaceDatabase в режиме репликации с автоматическим failover
+#
+# Запуск:
+#   docker-compose -f docker-compose.replication.yml up --build
+#
+# Архитектура:
+#   - peacedb-router: Координатор/роутер (единая точка входа)
+#   - 3 шарда x 3 реплики = 9 узлов данных
+#   - Кворумная запись: WriteQuorum=2 (2 из 3 реплик для успеха)
+#   - Автоматический failover при падении primary
+
+services:
+  # ========================================
+  # ROUTER - Координатор запросов
+  # ========================================
+  peacedb-router:
+    build:
+      context: ./PeaceDatabase
+      dockerfile: Dockerfile
+    container_name: peacedb-router
+    hostname: peacedb-router
+    environment:
+      - ASPNETCORE_URLS=http://+:8080
+      - ASPNETCORE_ENVIRONMENT=Production
+      - STORAGE_MODE=Sharded
+      - SHARDING_ENABLED=true
+      - SHARDING_MODE=Distributed
+      - SHARD_COUNT=3
+      - REPLICATION_ENABLED=true
+      - REPLICA_COUNT=2
+      - WRITE_QUORUM=2
+      - READ_QUORUM=1
+      # Static shard endpoints for Shard 0
+      - Sharding__Shards__0__Id=0
+      - Sharding__Shards__0__BaseUrl=http://peacedb-shard-0-primary:8080
+      - Sharding__Shards__1__Id=0
+      - Sharding__Shards__1__BaseUrl=http://peacedb-shard-0-replica-1:8080
+      - Sharding__Shards__2__Id=0
+      - Sharding__Shards__2__BaseUrl=http://peacedb-shard-0-replica-2:8080
+      # Static shard endpoints for Shard 1
+      - Sharding__Shards__3__Id=1
+      - Sharding__Shards__3__BaseUrl=http://peacedb-shard-1-primary:8080
+      - Sharding__Shards__4__Id=1
+      - Sharding__Shards__4__BaseUrl=http://peacedb-shard-1-replica-1:8080
+      - Sharding__Shards__5__Id=1
+      - Sharding__Shards__5__BaseUrl=http://peacedb-shard-1-replica-2:8080
+      # Static shard endpoints for Shard 2
+      - Sharding__Shards__6__Id=2
+      - Sharding__Shards__6__BaseUrl=http://peacedb-shard-2-primary:8080
+      - Sharding__Shards__7__Id=2
+      - Sharding__Shards__7__BaseUrl=http://peacedb-shard-2-replica-1:8080
+      - Sharding__Shards__8__Id=2
+      - Sharding__Shards__8__BaseUrl=http://peacedb-shard-2-replica-2:8080
+    ports:
+      - "8080:8080"
+    depends_on:
+      peacedb-shard-0-primary:
+        condition: service_healthy
+      peacedb-shard-0-replica-1:
+        condition: service_healthy
+      peacedb-shard-0-replica-2:
+        condition: service_healthy
+      peacedb-shard-1-primary:
+        condition: service_healthy
+      peacedb-shard-1-replica-1:
+        condition: service_healthy
+      peacedb-shard-1-replica-2:
+        condition: service_healthy
+      peacedb-shard-2-primary:
+        condition: service_healthy
+      peacedb-shard-2-replica-1:
+        condition: service_healthy
+      peacedb-shard-2-replica-2:
+        condition: service_healthy
+    networks:
+      - replication-net
+
+  # ========================================
+  # SHARD 0 - PRIMARY
+  # ========================================
+  peacedb-shard-0-primary:
+    build:
+      context: ./PeaceDatabase
+      dockerfile: Dockerfile
+    container_name: peacedb-shard-0-primary
+    hostname: peacedb-shard-0-primary
+    environment:
+      - ASPNETCORE_URLS=http://+:8080
+      - ASPNETCORE_ENVIRONMENT=Production
+      - STORAGE_MODE=File
+      - STORAGE_DATA_ROOT=/data
+      - SHARDING_ENABLED=true
+      - SHARDING_MODE=Distributed
+      - SHARD_COUNT=3
+      - CURRENT_SHARD_ID=0
+      - REPLICATION_ENABLED=true
+      - CURRENT_REPLICA_INDEX=0
+    volumes:
+      - shard0_primary_data:/data
+    networks:
+      - replication-net
+
+  # SHARD 0 - REPLICA 1
+  peacedb-shard-0-replica-1:
+    build:
+      context: ./PeaceDatabase
+      dockerfile: Dockerfile
+    container_name: peacedb-shard-0-replica-1
+    hostname: peacedb-shard-0-replica-1
+    environment:
+      - ASPNETCORE_URLS=http://+:8080
+      - ASPNETCORE_ENVIRONMENT=Production
+      - STORAGE_MODE=File
+      - STORAGE_DATA_ROOT=/data
+      - SHARDING_ENABLED=true
+      - SHARDING_MODE=Distributed
+      - SHARD_COUNT=3
+      - CURRENT_SHARD_ID=0
+      - REPLICATION_ENABLED=true
+      - CURRENT_REPLICA_INDEX=1
+    volumes:
+      - shard0_replica1_data:/data
+    networks:
+      - replication-net
+
+  # SHARD 0 - REPLICA 2
+  peacedb-shard-0-replica-2:
+    build:
+      context: ./PeaceDatabase
+      dockerfile: Dockerfile
+    container_name: peacedb-shard-0-replica-2
+    hostname: peacedb-shard-0-replica-2
+    environment:
+      - ASPNETCORE_URLS=http://+:8080
+      - ASPNETCORE_ENVIRONMENT=Production
+      - STORAGE_MODE=File
+      - STORAGE_DATA_ROOT=/data
+      - SHARDING_ENABLED=true
+      - SHARDING_MODE=Distributed
+      - SHARD_COUNT=3
+      - CURRENT_SHARD_ID=0
+      - REPLICATION_ENABLED=true
+      - CURRENT_REPLICA_INDEX=2
+    volumes:
+      - shard0_replica2_data:/data
+    networks:
+      - replication-net
+
+  # ========================================
+  # SHARD 1 - PRIMARY
+  # ========================================
+  peacedb-shard-1-primary:
+    build:
+      context: ./PeaceDatabase
+      dockerfile: Dockerfile
+    container_name: peacedb-shard-1-primary
+    hostname: peacedb-shard-1-primary
+    environment:
+      - ASPNETCORE_URLS=http://+:8080
+      - ASPNETCORE_ENVIRONMENT=Production
+      - STORAGE_MODE=File
+      - STORAGE_DATA_ROOT=/data
+      - SHARDING_ENABLED=true
+      - SHARDING_MODE=Distributed
+      - SHARD_COUNT=3
+      - CURRENT_SHARD_ID=1
+      - REPLICATION_ENABLED=true
+      - CURRENT_REPLICA_INDEX=0
+    volumes:
+      - shard1_primary_data:/data
+    networks:
+      - replication-net
+
+  # SHARD 1 - REPLICA 1
+  peacedb-shard-1-replica-1:
+    build:
+      context: ./PeaceDatabase
+      dockerfile: Dockerfile
+    container_name: peacedb-shard-1-replica-1
+    hostname: peacedb-shard-1-replica-1
+    environment:
+      - ASPNETCORE_URLS=http://+:8080
+      - ASPNETCORE_ENVIRONMENT=Production
+      - STORAGE_MODE=File
+      - STORAGE_DATA_ROOT=/data
+      - SHARDING_ENABLED=true
+      - SHARDING_MODE=Distributed
+      - SHARD_COUNT=3
+      - CURRENT_SHARD_ID=1
+      - REPLICATION_ENABLED=true
+      - CURRENT_REPLICA_INDEX=1
+    volumes:
+      - shard1_replica1_data:/data
+    networks:
+      - replication-net
+
+  # SHARD 1 - REPLICA 2
+  peacedb-shard-1-replica-2:
+    build:
+      context: ./PeaceDatabase
+      dockerfile: Dockerfile
+    container_name: peacedb-shard-1-replica-2
+    hostname: peacedb-shard-1-replica-2
+    environment:
+      - ASPNETCORE_URLS=http://+:8080
+      - ASPNETCORE_ENVIRONMENT=Production
+      - STORAGE_MODE=File
+      - STORAGE_DATA_ROOT=/data
+      - SHARDING_ENABLED=true
+      - SHARDING_MODE=Distributed
+      - SHARD_COUNT=3
+      - CURRENT_SHARD_ID=1
+      - REPLICATION_ENABLED=true
+      - CURRENT_REPLICA_INDEX=2
+    volumes:
+      - shard1_replica2_data:/data
+    networks:
+      - replication-net
+
+  # ========================================
+  # SHARD 2 - PRIMARY
+  # ========================================
+  peacedb-shard-2-primary:
+    build:
+      context: ./PeaceDatabase
+      dockerfile: Dockerfile
+    container_name: peacedb-shard-2-primary
+    hostname: peacedb-shard-2-primary
+    environment:
+      - ASPNETCORE_URLS=http://+:8080
+      - ASPNETCORE_ENVIRONMENT=Production
+      - STORAGE_MODE=File
+      - STORAGE_DATA_ROOT=/data
+      - SHARDING_ENABLED=true
+      - SHARDING_MODE=Distributed
+      - SHARD_COUNT=3
+      - CURRENT_SHARD_ID=2
+      - REPLICATION_ENABLED=true
+      - CURRENT_REPLICA_INDEX=0
+    volumes:
+      - shard2_primary_data:/data
+    networks:
+      - replication-net
+
+  # SHARD 2 - REPLICA 1
+  peacedb-shard-2-replica-1:
+    build:
+      context: ./PeaceDatabase
+      dockerfile: Dockerfile
+    container_name: peacedb-shard-2-replica-1
+    hostname: peacedb-shard-2-replica-1
+    environment:
+      - ASPNETCORE_URLS=http://+:8080
+      - ASPNETCORE_ENVIRONMENT=Production
+      - STORAGE_MODE=File
+      - STORAGE_DATA_ROOT=/data
+      - SHARDING_ENABLED=true
+      - SHARDING_MODE=Distributed
+      - SHARD_COUNT=3
+      - CURRENT_SHARD_ID=2
+      - REPLICATION_ENABLED=true
+      - CURRENT_REPLICA_INDEX=1
+    volumes:
+      - shard2_replica1_data:/data
+    networks:
+      - replication-net
+
+  # SHARD 2 - REPLICA 2
+  peacedb-shard-2-replica-2:
+    build:
+      context: ./PeaceDatabase
+      dockerfile: Dockerfile
+    container_name: peacedb-shard-2-replica-2
+    hostname: peacedb-shard-2-replica-2
+    environment:
+      - ASPNETCORE_URLS=http://+:8080
+      - ASPNETCORE_ENVIRONMENT=Production
+      - STORAGE_MODE=File
+      - STORAGE_DATA_ROOT=/data
+      - SHARDING_ENABLED=true
+      - SHARDING_MODE=Distributed
+      - SHARD_COUNT=3
+      - CURRENT_SHARD_ID=2
+      - REPLICATION_ENABLED=true
+      - CURRENT_REPLICA_INDEX=2
+    volumes:
+      - shard2_replica2_data:/data
+    networks:
+      - replication-net
+
+networks:
+  replication-net:
+    driver: bridge
+
+volumes:
+  shard0_primary_data:
+  shard0_replica1_data:
+  shard0_replica2_data:
+  shard1_primary_data:
+  shard1_replica1_data:
+  shard1_replica2_data:
+  shard2_primary_data:
+  shard2_replica1_data:
+  shard2_replica2_data:
+
