@@ -59,6 +59,8 @@ secrets.json
 .vscode/
 .history/
 *.code-workspace
+*.mdc
+AGENTS.md
 
 # ---- Temporary ----
 ~$*
