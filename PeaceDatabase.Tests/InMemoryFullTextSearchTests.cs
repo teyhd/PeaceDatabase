@@ -63,7 +63,7 @@ namespace PeaceDatabase.Tests.Storage
         }
 
         [Fact]
-        public void FullTextSearch_Microbenchmark_50Runs_Avg_And_Median()
+        public void FullTextSearch_Microbenchmark_100Runs_Avg_And_Median()
         {
             // Arrange
             var svc = new InMemoryDocumentService();
@@ -89,8 +89,8 @@ namespace PeaceDatabase.Tests.Storage
                 "gibberish123"      // промах
             };
 
-            // 50 прогонов
-            const int runs = 50;
+            // 100 прогонов
+            const int runs = 100;
             var timesMs = new List<double>(runs);
             var rnd = new Random(42);
 

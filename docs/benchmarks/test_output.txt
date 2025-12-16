@@ -1,0 +1,100 @@
+Test run for D:\_ITMOStudy\_Master\OPVP\PeaceDatabase\PeaceDatabase.Tests\bin\Debug\net8.0\PeaceDatabase.Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.14.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+D:\_ITMOStudy\_Master\OPVP\PeaceDatabase\PeaceDatabase.Tests\bin\Debug\net8.0\PeaceDatabase.Tests.dll
+Multiple test adapters with the same uri 'executor://xunit/VsTestRunner2/netcoreapp' were found. Ignoring adapter 'Xunit.Runner.VisualStudio.VsTestRunner'. Please uninstall the conflicting adapter(s) to avoid this warning.
+[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v2.5.3.1+6b60a9e56a (64-bit .NET 8.0.20)
+[xUnit.net 00:00:00.11]   Discovering: PeaceDatabase.Tests
+[xUnit.net 00:00:00.19]   Discovered:  PeaceDatabase.Tests
+[xUnit.net 00:00:00.20]   Starting:    PeaceDatabase.Tests
+     Warning:
+     The component "Fluent Assertions" is governed by the rules defined in the Xceed License Agreement and
+     the Xceed Fluent Assertions Community License. You may use Fluent Assertions free of charge for
+     non-commercial use only. An active subscription is required to use Fluent Assertions for commercial use.
+     Please contact Xceed Sales mailto:sales@xceed.com to acquire a subscription at a very low cost.
+     A paid commercial license supports the development and continued increasing support of
+     Fluent Assertions users under both commercial and community licenses. Help us
+     keep Fluent Assertions at the forefront of unit testing.
+     For more information, visit https://xceed.com/products/unit-testing/fluent-assertions/
+  Passed PeaceDatabase.Tests.Compact.EliasFanoBenchmarkTests.CompactBitVector_Rank_ReturnsCorrectCount [15 ms]
+  Passed PeaceDatabase.Tests.Compact.EliasFanoBenchmarkTests.EliasFanoList_Intersection_WorksCorrectly [36 ms]
+  Passed PeaceDatabase.Tests.Compact.EliasFanoBenchmarkTests.Benchmark_SearchSpeed_EliasFanoVsHashSet(numDocs: 5000, tokensPerDoc: 30) [328 ms]
+  Standard Output Messages:
+ === Search Speed Comparison: 5000 docs ===
+ HashSet:     3 ms (100 queries, 10702 total results)
+ Elias-Fano:  30 ms (100 queries, 3986 total results)
+ Speed ratio: 7.50x
+
+
+  Passed PeaceDatabase.Tests.Compact.EliasFanoBenchmarkTests.Benchmark_SearchSpeed_EliasFanoVsHashSet(numDocs: 1000, tokensPerDoc: 20) [49 ms]
+  Standard Output Messages:
+ === Search Speed Comparison: 1000 docs ===
+ HashSet:     0 ms (100 queries, 1276 total results)
+ Elias-Fano:  2 ms (100 queries, 1276 total results)
+ Speed ratio: 2.00x
+
+
+  Passed PeaceDatabase.Tests.Compact.EliasFanoBenchmarkTests.EliasFanoList_NextGEQ_WorksCorrectly [< 1 ms]
+  Passed PeaceDatabase.Tests.Compact.EliasFanoBenchmarkTests.EliasFanoList_Contains_WorksCorrectly [1 ms]
+  Passed PeaceDatabase.Tests.Compact.EliasFanoBenchmarkTests.Benchmark_MemoryComparison_EliasFanoVsHashSet(numDocs: 100, tokensPerDoc: 10) [8 ms]
+  Standard Output Messages:
+ === Memory Comparison: 100 docs, 10 tokens/doc ===
+ HashSet index:     ~122.7 KB
+ Elias-Fano index:  ~35.5 KB
+ Compression ratio: 3.46x
+ Total postings:    1000
+ Bits per posting:  290.62
+
+
+  Passed PeaceDatabase.Tests.Compact.EliasFanoBenchmarkTests.Benchmark_MemoryComparison_EliasFanoVsHashSet(numDocs: 1000, tokensPerDoc: 50) [76 ms]
+  Standard Output Messages:
+ === Memory Comparison: 1000 docs, 50 tokens/doc ===
+ HashSet index:     ~4631.6 KB
+ Elias-Fano index:  ~88.7 KB
+ Compression ratio: 52.21x
+ Total postings:    50000
+ Bits per posting:  14.53
+
+
+  Passed PeaceDatabase.Tests.Compact.EliasFanoBenchmarkTests.Benchmark_MemoryComparison_EliasFanoVsHashSet(numDocs: 10000, tokensPerDoc: 100) [1 s]
+  Standard Output Messages:
+ === Memory Comparison: 10000 docs, 100 tokens/doc ===
+ HashSet index:     ~93585.7 KB
+ Elias-Fano index:  ~824.3 KB
+ Compression ratio: 113.54x
+ Total postings:    1000000
+ Bits per posting:  6.75
+
+
+  Passed PeaceDatabase.Tests.Compact.EliasFanoBenchmarkTests.CompactFullTextIndex_IndexAndSearch_ReturnsCorrectDocuments [13 ms]
+  Passed PeaceDatabase.Tests.Compact.EliasFanoBenchmarkTests.CompactBitVector_Select_ReturnsCorrectPosition [< 1 ms]
+[xUnit.net 00:00:04.18]   Finished:    PeaceDatabase.Tests
+  Passed PeaceDatabase.Tests.Compact.EliasFanoBenchmarkTests.Benchmark_DetailedMemoryAnalysis [1 s]
+  Standard Output Messages:
+ === Detailed Memory Analysis ===
+ Compact: 837.0 KB (5000 tokens), Pending: 0.0 KB (0 tokens), Postings: 500000, Docs: 10000, vs HashSet: 23437.5 KB, Compression: 28.0x
+ Average bits per posting: 13.71
+ Theoretical minimum (log2(n/posting)): ~2-3 bits
+
+
+  Passed PeaceDatabase.Tests.Compact.EliasFanoBenchmarkTests.EliasFanoList_SmallSequence_CorrectlyEncodesAndDecodes [< 1 ms]
+  Standard Output Messages:
+ EliasFano: 8 elements, 10.88 bits/element
+
+
+  Passed PeaceDatabase.Tests.Compact.EliasFanoBenchmarkTests.Benchmark_IntegratedWithDocumentService [148 ms]
+  Standard Output Messages:
+ Inserted 500 docs in 126 ms
+ Compact index stats: Compact: 0.0 KB (0 tokens), Pending: 27.6 KB (691 tokens), Postings: 5738, Docs: 500, vs HashSet: 269.0 KB, Compression: 9.7x
+ === DocumentService Search Comparison ===
+ Normal (HashSet):  8 ms, 436 results
+ Compact (EF):      8 ms, 436 results
+
+
+
+Test Run Successful.
+Total tests: 14
+     Passed: 14
+ Total time: 4.8245 Seconds
