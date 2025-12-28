@@ -10,8 +10,8 @@ RUN dotnet restore PeaceDatabase/PeaceDatabase.sln
 
 # Build and publish the main service
 COPY . .
-WORKDIR /src/PeaceDatabase
-RUN dotnet publish -c Release -o /app/publish
+WORKDIR /src
+RUN dotnet publish PeaceDatabase/PeaceDatabase.csproj -c Release -o /app/publish
 
 # Runtime image
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
