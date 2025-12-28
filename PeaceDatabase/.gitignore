@@ -24,7 +24,6 @@ appsettings.*.local.json
 *.log
 
 # Docker
-**/Dockerfile
 **/docker-compose*
 
 # Publish output
