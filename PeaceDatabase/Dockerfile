@@ -1,17 +1,13 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-# Restore dependencies for all solution projects
-COPY PeaceDatabase/PeaceDatabase.sln PeaceDatabase/
-COPY PeaceDatabase/PeaceDatabase.csproj PeaceDatabase/
-COPY PeaceDatabase.Tests/PeaceDatabase.Tests.csproj PeaceDatabase.Tests/
-COPY PeaceDatabase.Gzip/PeaceDatabase.Gzip.csproj PeaceDatabase.Gzip/
-RUN dotnet restore PeaceDatabase/PeaceDatabase.sln
+# Restore
+COPY PeaceDatabase.csproj ./
+RUN dotnet restore
 
-# Build and publish the main service
-COPY . .
-WORKDIR /src
-RUN dotnet publish PeaceDatabase/PeaceDatabase.csproj -c Release -o /app/publish
+# Build
+COPY . ./
+RUN dotnet publish -c Release -o /app/publish
 
 # Runtime image
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
