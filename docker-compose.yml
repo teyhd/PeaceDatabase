@@ -14,8 +14,8 @@ services:
 
   peacedb:
     build:
-      context: ./PeaceDatabase
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: PeaceDatabase/Dockerfile
     container_name: peacedb
     environment:
       - ASPNETCORE_URLS=http://+:8080

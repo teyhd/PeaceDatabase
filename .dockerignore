@@ -1,0 +1,16 @@
+# Ignore build outputs and tooling caches
+bin
+obj
+.vs
+*.user
+*.suo
+*.swp
+*.tmp
+
+# Version control and CI metadata
+.git
+.gitignore
+.github
+
+# Local tooling/scripts not needed for container builds
+Dockerfile.*
