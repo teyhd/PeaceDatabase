@@ -7,7 +7,7 @@ RUN dotnet restore
 
 # Build
 COPY . ./
-RUN dotnet publish -c Release -o /app/publish
+RUN dotnet publish PeaceDatabase.csproj -c Release -o /app/publish
 
 # Runtime image
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
