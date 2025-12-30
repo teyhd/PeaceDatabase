@@ -7,6 +7,7 @@ using PeaceDatabase.Storage.Binary; // добавлено
 using System.Diagnostics; // для бенчмарка
 using Microsoft.AspNetCore.Http; // for IFormFile
 using Microsoft.AspNetCore.Mvc.ApiExplorer; // for Tags attribute
+using Microsoft.Extensions.Logging; // for ILogger
 
 namespace PeaceDatabase.WebApi.Controllers;
 
@@ -231,10 +232,12 @@ public class DocsApiController : ControllerBase
     {
         var idProp = body.GetType().GetProperty("Id");
         var bodyId = idProp?.GetValue(body)?.ToString();
-        if (bodyId != null && !string.Equals(bodyId, id, StringComparison.Ordinal))
+        // Проверяем только если bodyId не пустой (пустая строка = не указан)
+        if (!string.IsNullOrEmpty(bodyId) && !string.Equals(bodyId, id, StringComparison.Ordinal))
             return BadRequest(new ErrorResponse { Ok = false, Error = "_id in body must equal route id", Db = db, Id = id });
         
-        if (bodyId == null && idProp?.CanWrite == true)
+        // Если Id в теле отсутствует или пустой — проставляем из route
+        if (string.IsNullOrEmpty(bodyId) && idProp?.CanWrite == true)
             idProp.SetValue(body, id);
 
         var res = _svc.Put(db, body);
@@ -439,5 +442,32 @@ public sealed class BenchApiController : ControllerBase
                 deserialize = jsonDesSw.Elapsed.TotalMilliseconds / Math.Max(0.000001, binDesSw.Elapsed.TotalMilliseconds)
             }
         });
+    }
+}
+
+// ===============================
+// Логирование
+// ===============================
+[ApiController]
+[Route("info")]
+[Produces("application/json")]
+public sealed class LogsApiController : ControllerBase
+{
+    private readonly ILogger<LogsApiController> _logger;
+
+    public LogsApiController(ILogger<LogsApiController> logger)
+    {
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+
+    // GET /info?msg=...
+    [HttpGet]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
+    public IActionResult Log([FromQuery] string? msg)
+    {
+        var message = msg ?? string.Empty;
+        //_logger.LogInformation("INFO: ", message);
+        Console.WriteLine("info: Program[0]\n      " + message);
+        return Ok(new { ok = true, msg = message });
     }
 }

@@ -22,8 +22,10 @@ public class ReplicationController : ControllerBase
     private readonly ILogger<ReplicationController> _logger;
     private static readonly DateTimeOffset _startTime = DateTimeOffset.UtcNow;
     private static bool _isPrimary;
+    private static bool _isInitialized;
     private static string? _currentPrimaryUrl;
     private static long _lastReplicatedSeq;
+    private static readonly object _initLock = new object();
 
     public ReplicationController(
         IDocumentService svc,
@@ -34,9 +36,30 @@ public class ReplicationController : ControllerBase
         _shardingOptions = shardingOptions ?? throw new ArgumentNullException(nameof(shardingOptions));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-        // Инициализируем состояние primary из конфигурации
-        if (_shardingOptions.Replication.CurrentReplicaIndex == 0)
-            _isPrimary = true;
+        // Инициализируем состояние primary ТОЛЬКО при первом запуске
+        // После этого состояние управляется через /promote и /set-primary
+        if (!_isInitialized)
+        {
+            lock (_initLock)
+            {
+                if (!_isInitialized)
+                {
+                    if (_shardingOptions.Replication.CurrentReplicaIndex.HasValue && 
+                        _shardingOptions.Replication.CurrentReplicaIndex.Value == 0)
+                    {
+                        _isPrimary = true;
+                        _logger.LogInformation("Node initialized as primary (ReplicaIndex=0)");
+                    }
+                    else
+                    {
+                        _isPrimary = false;
+                        _logger.LogInformation("Node initialized as replica (ReplicaIndex={ReplicaIndex})", 
+                            _shardingOptions.Replication.CurrentReplicaIndex);
+                    }
+                    _isInitialized = true;
+                }
+            }
+        }
     }
 
     /// <summary>

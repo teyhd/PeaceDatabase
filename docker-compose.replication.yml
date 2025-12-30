@@ -77,6 +77,7 @@ services:
       - STORAGE_DATA_ROOT=/data
       - SHARDING_ENABLED=false
       - CURRENT_SHARD_ID=0
+      - CURRENT_REPLICA_INDEX=0
       - REPLICATION_ENABLED=false
     volumes:
       - shard0_primary_data:/data
@@ -97,6 +98,7 @@ services:
       - STORAGE_DATA_ROOT=/data
       - SHARDING_ENABLED=false
       - CURRENT_SHARD_ID=0
+      - CURRENT_REPLICA_INDEX=1
       - REPLICATION_ENABLED=false
     volumes:
       - shard0_replica1_data:/data
@@ -117,6 +119,7 @@ services:
       - STORAGE_DATA_ROOT=/data
       - SHARDING_ENABLED=false
       - CURRENT_SHARD_ID=0
+      - CURRENT_REPLICA_INDEX=2
       - REPLICATION_ENABLED=false
     volumes:
       - shard0_replica2_data:/data
@@ -139,6 +142,7 @@ services:
       - STORAGE_DATA_ROOT=/data
       - SHARDING_ENABLED=false
       - CURRENT_SHARD_ID=1
+      - CURRENT_REPLICA_INDEX=0
       - REPLICATION_ENABLED=false
     volumes:
       - shard1_primary_data:/data
@@ -159,6 +163,7 @@ services:
       - STORAGE_DATA_ROOT=/data
       - SHARDING_ENABLED=false
       - CURRENT_SHARD_ID=1
+      - CURRENT_REPLICA_INDEX=1
       - REPLICATION_ENABLED=false
     volumes:
       - shard1_replica1_data:/data
@@ -179,6 +184,7 @@ services:
       - STORAGE_DATA_ROOT=/data
       - SHARDING_ENABLED=false
       - CURRENT_SHARD_ID=1
+      - CURRENT_REPLICA_INDEX=2
       - REPLICATION_ENABLED=false
     volumes:
       - shard1_replica2_data:/data
@@ -201,6 +207,7 @@ services:
       - STORAGE_DATA_ROOT=/data
       - SHARDING_ENABLED=false
       - CURRENT_SHARD_ID=2
+      - CURRENT_REPLICA_INDEX=0
       - REPLICATION_ENABLED=false
     volumes:
       - shard2_primary_data:/data
@@ -221,6 +228,7 @@ services:
       - STORAGE_DATA_ROOT=/data
       - SHARDING_ENABLED=false
       - CURRENT_SHARD_ID=2
+      - CURRENT_REPLICA_INDEX=1
       - REPLICATION_ENABLED=false
     volumes:
       - shard2_replica1_data:/data
@@ -241,6 +249,7 @@ services:
       - STORAGE_DATA_ROOT=/data
       - SHARDING_ENABLED=false
       - CURRENT_SHARD_ID=2
+      - CURRENT_REPLICA_INDEX=2
       - REPLICATION_ENABLED=false
     volumes:
       - shard2_replica2_data:/data
