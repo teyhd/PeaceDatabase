@@ -68,6 +68,28 @@ public sealed class ReplicaInfo
     /// </summary>
     public bool IsLocal { get; init; }
 
+    // ==================== Raft State ====================
+
+    /// <summary>
+    /// Текущий Raft терм реплики.
+    /// </summary>
+    public long CurrentTerm { get; set; }
+
+    /// <summary>
+    /// За кого реплика проголосовала в текущем терме (null = не голосовала).
+    /// </summary>
+    public string? VotedFor { get; set; }
+
+    /// <summary>
+    /// Текущая роль реплики в Raft консенсусе.
+    /// </summary>
+    public RaftRole Role { get; set; } = RaftRole.Follower;
+
+    /// <summary>
+    /// Время последнего полученного heartbeat от лидера.
+    /// </summary>
+    public DateTimeOffset? LastHeartbeat { get; set; }
+
     /// <summary>
     /// Уникальный идентификатор реплики в формате "shardId-replicaIndex".
     /// </summary>
@@ -85,7 +107,7 @@ public sealed class ReplicaInfo
     public bool CanBeElected => IsAvailable && SyncState == ReplicaSyncState.InSync;
 
     public override string ToString() =>
-        $"Replica[{ShardId}.{ReplicaIndex}] {(IsPrimary ? "PRIMARY" : "REPLICA")} " +
+        $"Replica[{ShardId}.{ReplicaIndex}] {Role} term={CurrentTerm} " +
         $"@ {(IsLocal ? "local" : BaseUrl)} ({HealthStatus}, {SyncState})";
 }
 

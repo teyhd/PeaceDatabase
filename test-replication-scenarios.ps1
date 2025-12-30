@@ -3,7 +3,7 @@
 
 param(
     [Parameter(Mandatory = $false)]
-    [ValidateSet(1, 3, 5, 6, 7, 13, "all")]
+    [ValidateSet(1, 3, 5, 6, 7, 8, 9, 10, 13, "all", "raft")]
     [string]$Scenario = "all",
     
     [Parameter(Mandatory = $false)]
@@ -80,10 +80,47 @@ function Show-ReplicaState {
         Write-Host "  IsPrimary: $($state.IsPrimary)"
         Write-Host "  Seq: $($state.Seq)"
         Write-Host "  Healthy: $($state.Healthy)"
+        # Raft state (если доступен)
+        if ($state.CurrentTerm -ne $null) {
+            Write-Host "  Term: $($state.CurrentTerm)"
+            Write-Host "  Role: $($state.Role)"
+        }
         Write-Host ""
     }
     else {
         Write-Warning "  Не удалось получить состояние $containerName"
+    }
+}
+
+# Функция получения Raft состояния реплики
+function Get-RaftState {
+    param($containerName)
+    
+    try {
+        $json = docker exec $containerName curl -s http://localhost:8080/v1/_replication/raft-state 2>$null
+        return $json | ConvertFrom-Json
+    }
+    catch {
+        return $null
+    }
+}
+
+# Функция вывода Raft состояния
+function Show-RaftState {
+    param($containerName)
+    
+    $state = Get-RaftState $containerName
+    if ($state) {
+        Write-Host "  Container: $containerName"
+        Write-Host "  NodeId: $($state.NodeId)"
+        Write-Host "  Term: $($state.CurrentTerm)"
+        Write-Host "  Role: $($state.Role)"
+        Write-Host "  VotedFor: $($state.VotedFor)"
+        Write-Host "  LeaderId: $($state.CurrentLeaderId)"
+        Write-Host ""
+    }
+    else {
+        Write-Warning "  Не удалось получить Raft состояние $containerName"
     }
 }
 
@@ -312,6 +349,162 @@ function Test-Scenario7 {
     Write-Success "Сценарий 7 завершён"
 }
 
+# ==================== RAFT SCENARIOS ====================
+
+# Сценарий 8: Увеличение терма после выборов
+function Test-Scenario8 {
+    Write-Info "`n=== Сценарий 8: Увеличение терма после выборов (Raft) ==="
+    
+    $primary = "peacedb-shard-0-primary"
+    $replica1 = "peacedb-shard-0-replica-1"
+    $replica2 = "peacedb-shard-0-replica-2"
+    
+    Write-Info "Шаг 1: Проверка начального Raft состояния"
+    Write-Host "Primary:"
+    Show-RaftState $primary
+    
+    $initialState = Get-RaftState $primary
+    $initialTerm = $initialState.CurrentTerm
+    Write-Info "Начальный терм: $initialTerm"
+    
+    Write-Host "Replica-1:"
+    Show-RaftState $replica1
+    
+    Write-Info "Шаг 2: Остановка текущего лидера"
+    docker stop $primary | Out-Null
+    Write-Warning "Primary остановлен"
+    
+    Write-Info "Шаг 3: Ожидание election timeout и выборов (20 секунд)..."
+    Start-Sleep -Seconds 20
+    
+    Write-Info "Шаг 4: Проверка нового терма"
+    Write-Host "Replica-1:"
+    Show-RaftState $replica1
+    
+    $newState = Get-RaftState $replica1
+    if ($newState -and $newState.CurrentTerm -gt $initialTerm) {
+        Write-Success "Терм увеличился: $initialTerm -> $($newState.CurrentTerm)"
+    }
+    elseif ($newState) {
+        Write-Warning "Терм не изменился: $($newState.CurrentTerm)"
+    }
+    
+    Write-Host "Replica-2:"
+    Show-RaftState $replica2
+    
+    Write-Info "Шаг 5: Восстановление старого лидера"
+    docker start $primary | Out-Null
+    Start-Sleep -Seconds 5
+    
+    Write-Host "Старый primary после восстановления:"
+    Show-RaftState $primary
+    
+    $oldLeaderState = Get-RaftState $primary
+    if ($oldLeaderState -and $oldLeaderState.Role -ne "Leader") {
+        Write-Success "Старый лидер корректно стал $($oldLeaderState.Role) (не Leader)"
+    }
+    elseif ($oldLeaderState) {
+        Write-Info "Старый лидер всё ещё $($oldLeaderState.Role)"
+    }
+    
+    Write-Success "Сценарий 8 завершён"
+}
+
+# Сценарий 9: Отклонение устаревшего лидера (Stale Leader Rejection)
+function Test-Scenario9 {
+    Write-Info "`n=== Сценарий 9: Отклонение устаревшего лидера (Raft) ==="
+    
+    $primary = "peacedb-shard-0-primary"
+    $replica1 = "peacedb-shard-0-replica-1"
+    $replica2 = "peacedb-shard-0-replica-2"
+    
+    Write-Info "Шаг 1: Проверка начального состояния"
+    $initialState = Get-RaftState $primary
+    Write-Host "Primary терм: $($initialState.CurrentTerm), Role: $($initialState.Role)"
+    
+    Write-Info "Шаг 2: Изоляция primary от сети (симуляция partition)"
+    $networkName = Get-NetworkName $ComposeFile
+    
+    docker network disconnect $networkName $primary 2>$null
+    Write-Warning "Primary изолирован"
+    
+    Write-Info "Шаг 3: Ожидание выборов нового лидера (20 секунд)..."
+    Start-Sleep -Seconds 20
+    
+    Write-Info "Шаг 4: Проверка, что majority выбрала нового лидера"
+    Write-Host "Replica-1:"
+    Show-RaftState $replica1
+    
+    $replica1State = Get-RaftState $replica1
+    Write-Host "Replica-2:"
+    Show-RaftState $replica2
+    
+    Write-Info "Шаг 5: Возвращение старого лидера в сеть"
+    docker network connect $networkName $primary 2>$null
+    Start-Sleep -Seconds 5
+    
+    Write-Host "Старый primary после возвращения:"
+    Show-RaftState $primary
+    
+    $returnedState = Get-RaftState $primary
+    if ($returnedState) {
+        if ($returnedState.Role -eq "Follower") {
+            Write-Success "Старый лидер корректно понизился до Follower!"
+        }
+        elseif ($returnedState.CurrentTerm -gt $initialState.CurrentTerm) {
+            Write-Success "Старый лидер обновил терм: $($initialState.CurrentTerm) -> $($returnedState.CurrentTerm)"
+        }
+        else {
+            Write-Info "Старый лидер: Role=$($returnedState.Role), Term=$($returnedState.CurrentTerm)"
+        }
+    }
+    
+    Write-Success "Сценарий 9 завершён"
+}
+
+# Сценарий 10: Heartbeat и поддержание лидерства
+function Test-Scenario10 {
+    Write-Info "`n=== Сценарий 10: Heartbeat и поддержание лидерства (Raft) ==="
+    
+    $primary = "peacedb-shard-0-primary"
+    $replica1 = "peacedb-shard-0-replica-1"
+    $replica2 = "peacedb-shard-0-replica-2"
+    
+    Write-Info "Шаг 1: Проверка начального состояния"
+    Write-Host "Primary:"
+    Show-RaftState $primary
+    
+    $initialTerm = (Get-RaftState $primary).CurrentTerm
+    
+    Write-Info "Шаг 2: Ожидание нескольких циклов heartbeat (5 секунд)..."
+    Start-Sleep -Seconds 5
+    
+    Write-Info "Шаг 3: Проверка, что терм и лидер не изменились"
+    Write-Host "Primary:"
+    Show-RaftState $primary
+    
+    $afterState = Get-RaftState $primary
+    if ($afterState.CurrentTerm -eq $initialTerm -and $afterState.Role -eq "Leader") {
+        Write-Success "Лидерство стабильно: терм=$($afterState.CurrentTerm), role=Leader"
+    }
+    else {
+        Write-Warning "Состояние изменилось: терм=$($afterState.CurrentTerm), role=$($afterState.Role)"
+    }
+    
+    Write-Host "Replica-1:"
+    Show-RaftState $replica1
+    
+    $replica1State = Get-RaftState $replica1
+    if ($replica1State.Role -eq "Follower") {
+        Write-Success "Replica-1 остаётся Follower (получает heartbeat)"
+    }
+    
+    Write-Host "Replica-2:"
+    Show-RaftState $replica2
+    
+    Write-Success "Сценарий 10 завершён"
+}
+
 # Главная функция
 function Main {
     Write-Info "=========================================="
@@ -345,6 +538,17 @@ function Main {
         "3" { Test-Scenario3 }
         "6" { Test-Scenario6 }
         "7" { Test-Scenario7 }
+        "8" { Test-Scenario8 }
+        "9" { Test-Scenario9 }
+        "10" { Test-Scenario10 }
+        "raft" {
+            Write-Info "Запуск Raft-специфичных сценариев..."
+            Test-Scenario8
+            Start-Sleep -Seconds 5
+            Test-Scenario9
+            Start-Sleep -Seconds 5
+            Test-Scenario10
+        }
         "all" {
             Test-Scenario1
             Start-Sleep -Seconds 3
@@ -353,6 +557,15 @@ function Main {
             Test-Scenario6
             Start-Sleep -Seconds 3
             Test-Scenario7
+            Start-Sleep -Seconds 3
+            Write-Info "`n=========================================="
+            Write-Info "  Raft-специфичные сценарии"
+            Write-Info "==========================================`n"
+            Test-Scenario8
+            Start-Sleep -Seconds 5
+            Test-Scenario9
+            Start-Sleep -Seconds 5
+            Test-Scenario10
         }
     }
     

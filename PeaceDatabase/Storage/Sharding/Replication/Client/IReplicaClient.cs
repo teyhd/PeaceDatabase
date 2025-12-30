@@ -47,6 +47,36 @@ public interface IReplicaClient : IShardClient
         long fromSeq,
         int limit = 1000,
         CancellationToken ct = default);
+
+    // ==================== Raft Consensus Methods ====================
+
+    /// <summary>
+    /// Отправляет запрос на голосование (RequestVote RPC).
+    /// </summary>
+    /// <param name="term">Терм кандидата</param>
+    /// <param name="candidateId">ID кандидата</param>
+    /// <param name="lastSeq">Последний seq кандидата</param>
+    /// <param name="ct">Токен отмены</param>
+    /// <returns>Ответ с результатом голосования</returns>
+    Task<VoteResponse> RequestVoteAsync(
+        long term,
+        string candidateId,
+        long lastSeq,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Отправляет heartbeat (упрощённый AppendEntries RPC).
+    /// </summary>
+    /// <param name="term">Терм лидера</param>
+    /// <param name="leaderId">ID лидера</param>
+    /// <param name="leaderUrl">URL лидера</param>
+    /// <param name="ct">Токен отмены</param>
+    /// <returns>Ответ с результатом</returns>
+    Task<HeartbeatResponse> SendHeartbeatAsync(
+        long term,
+        string leaderId,
+        string? leaderUrl,
+        CancellationToken ct = default);
 }
 
 /// <summary>
@@ -201,5 +231,44 @@ public sealed class ReplicateBatchResult
     /// Последний успешно реплицированный seq.
     /// </summary>
     public long LastSeq { get; init; }
+}
+
+// ==================== Raft Consensus DTOs ====================
+
+/// <summary>
+/// Ответ на запрос голосования (RequestVote RPC).
+/// </summary>
+public sealed class VoteResponse
+{
+    /// <summary>
+    /// Текущий терм отвечающего узла.
+    /// </summary>
+    public long Term { get; init; }
+
+    /// <summary>
+    /// Был ли отдан голос кандидату.
+    /// </summary>
+    public bool VoteGranted { get; init; }
+}
+
+/// <summary>
+/// Ответ на heartbeat (AppendEntries RPC).
+/// </summary>
+public sealed class HeartbeatResponse
+{
+    /// <summary>
+    /// Текущий терм отвечающего узла.
+    /// </summary>
+    public long Term { get; init; }
+
+    /// <summary>
+    /// Был ли heartbeat успешно принят.
+    /// </summary>
+    public bool Success { get; init; }
+
+    /// <summary>
+    /// ID текущего лидера (если известен).
+    /// </summary>
+    public string? LeaderId { get; init; }
 }
 

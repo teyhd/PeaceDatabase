@@ -152,6 +152,23 @@ public sealed class ReplicationCoordinator : IDisposable
     }
 
     /// <summary>
+    /// Добавляет набор реплик (для data nodes с Raft).
+    /// </summary>
+    public void AddReplicaSet(ReplicaSet replicaSet)
+    {
+        if (replicaSet == null) throw new ArgumentNullException(nameof(replicaSet));
+        
+        lock (_lock)
+        {
+            replicaSet.PrimaryChanged += OnPrimaryChanged;
+            _replicaSets[replicaSet.ShardId] = replicaSet;
+            _logger?.LogInformation(
+                "Added ReplicaSet for shard {ShardId} with {ReplicaCount} replicas",
+                replicaSet.ShardId, replicaSet.Replicas.Count);
+        }
+    }
+
+    /// <summary>
     /// Получает клиент для primary узла указанного шарда.
     /// </summary>
     public IReplicaClient? GetPrimaryClient(int shardId)

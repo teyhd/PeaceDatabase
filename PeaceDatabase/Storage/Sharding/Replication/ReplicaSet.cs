@@ -21,6 +21,11 @@ public sealed class ReplicaSet
     public int ShardId { get; }
 
     /// <summary>
+    /// Индекс локальной реплики (из конфигурации).
+    /// </summary>
+    public int? LocalReplicaIndex { get; set; }
+
+    /// <summary>
     /// Текущий primary узел (может быть null при failover).
     /// </summary>
     public ReplicaInfo? Primary

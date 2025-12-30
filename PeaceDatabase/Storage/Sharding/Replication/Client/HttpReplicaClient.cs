@@ -473,6 +473,85 @@ public sealed class HttpReplicaClient : IReplicaClient
         }
     }
 
+    // ==================== Raft Consensus Methods ====================
+
+    public async Task<VoteResponse> RequestVoteAsync(
+        long term,
+        string candidateId,
+        long lastSeq,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var url = $"{ReplicaInfo.BaseUrl}/v1/_replication/vote";
+            var body = new
+            {
+                Term = term,
+                CandidateId = candidateId,
+                LastSeq = lastSeq
+            };
+
+            var response = await _http.PostAsJsonAsync(url, body, _jsonOpts, ct);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<VoteResponseDto>(_jsonOpts, ct);
+                return new VoteResponse
+                {
+                    Term = result?.Term ?? 0,
+                    VoteGranted = result?.VoteGranted ?? false
+                };
+            }
+
+            _logger?.LogWarning("RequestVote to {Url} failed: {Status}", ReplicaInfo.BaseUrl, response.StatusCode);
+            return new VoteResponse { Term = 0, VoteGranted = false };
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning("RequestVote to {Url} failed: {Error}", ReplicaInfo.BaseUrl, ex.Message);
+            return new VoteResponse { Term = 0, VoteGranted = false };
+        }
+    }
+
+    public async Task<HeartbeatResponse> SendHeartbeatAsync(
+        long term,
+        string leaderId,
+        string? leaderUrl,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var url = $"{ReplicaInfo.BaseUrl}/v1/_replication/heartbeat";
+            var body = new
+            {
+                Term = term,
+                LeaderId = leaderId,
+                LeaderUrl = leaderUrl
+            };
+
+            var response = await _http.PostAsJsonAsync(url, body, _jsonOpts, ct);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<HeartbeatResponseDto>(_jsonOpts, ct);
+                return new HeartbeatResponse
+                {
+                    Term = result?.Term ?? 0,
+                    Success = result?.Success ?? false,
+                    LeaderId = result?.LeaderId
+                };
+            }
+
+            _logger?.LogDebug("Heartbeat to {Url} failed: {Status}", ReplicaInfo.BaseUrl, response.StatusCode);
+            return new HeartbeatResponse { Term = 0, Success = false, LeaderId = null };
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug("Heartbeat to {Url} failed: {Error}", ReplicaInfo.BaseUrl, ex.Message);
+            return new HeartbeatResponse { Term = 0, Success = false };
+        }
+    }
+
     #endregion
 
     #region Helpers
@@ -547,6 +626,19 @@ public sealed class HttpReplicaClient : IReplicaClient
     private sealed class WalEntriesResult
     {
         public List<ReplicationEntry>? Entries { get; set; }
+    }
+
+    private sealed class VoteResponseDto
+    {
+        public long Term { get; set; }
+        public bool VoteGranted { get; set; }
+    }
+
+    private sealed class HeartbeatResponseDto
+    {
+        public long Term { get; set; }
+        public bool Success { get; set; }
+        public string? LeaderId { get; set; }
     }
 
     #endregion

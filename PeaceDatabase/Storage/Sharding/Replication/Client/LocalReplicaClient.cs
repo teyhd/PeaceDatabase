@@ -16,6 +16,9 @@ public sealed class LocalReplicaClient : IReplicaClient
     private bool _isPrimary;
     private string? _currentPrimaryUrl;
     private bool _disposed;
+    
+    // Raft state for local replica
+    private readonly RaftState _raftState;
 
     public ReplicaInfo ReplicaInfo { get; }
 
@@ -33,6 +36,11 @@ public sealed class LocalReplicaClient : IReplicaClient
         _service = service ?? throw new ArgumentNullException(nameof(service));
         _isPrimary = isPrimary;
         _startTime = DateTimeOffset.UtcNow;
+        _raftState = new RaftState(replicaInfo.UniqueId);
+        if (isPrimary)
+        {
+            _raftState.BecomeLeader();
+        }
     }
 
     #region IShardClient Implementation
@@ -266,6 +274,54 @@ public sealed class LocalReplicaClient : IReplicaClient
         // Для локального режима WAL не поддерживается напрямую
         // Возвращаем пустой список - синхронизация будет через полный скан
         return Task.FromResult<IReadOnlyList<ReplicationEntry>>(Array.Empty<ReplicationEntry>());
+    }
+
+    // ==================== Raft Consensus Methods ====================
+
+    public Task<VoteResponse> RequestVoteAsync(
+        long term,
+        string candidateId,
+        long lastSeq,
+        CancellationToken ct = default)
+    {
+        // Получаем наш текущий seq
+        long mySeq = 0;
+        try
+        {
+            mySeq = _service.Seq("_default") + _service.Seq("test");
+        }
+        catch { /* игнорируем */ }
+
+        // Пытаемся отдать голос
+        var voteGranted = _raftState.Vote(term, candidateId, lastSeq, mySeq);
+
+        return Task.FromResult(new VoteResponse
+        {
+            Term = _raftState.CurrentTerm,
+            VoteGranted = voteGranted
+        });
+    }
+
+    public Task<HeartbeatResponse> SendHeartbeatAsync(
+        long term,
+        string leaderId,
+        string? leaderUrl,
+        CancellationToken ct = default)
+    {
+        // Принимаем heartbeat
+        var accepted = _raftState.ReceiveHeartbeat(term, leaderId);
+
+        if (accepted)
+        {
+            _isPrimary = false;
+            _currentPrimaryUrl = leaderUrl;
+        }
+
+        return Task.FromResult(new HeartbeatResponse
+        {
+            Term = _raftState.CurrentTerm,
+            Success = accepted
+        });
     }
 
     #endregion
