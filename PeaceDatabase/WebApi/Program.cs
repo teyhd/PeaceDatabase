@@ -26,7 +26,10 @@ using PeaceDatabase.Storage.Sharding.Configuration;
 
 // ===== Replication mode (репликация для отказоустойчивости)
 using PeaceDatabase.Storage.Sharding.Replication;
+using PeaceDatabase.Storage.Sharding.Replication.Client;
 using PeaceDatabase.Storage.Sharding.Replication.Configuration;
+using PeaceDatabase.Storage.Sharding.Routing;
+using Microsoft.Extensions.Hosting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -123,13 +126,96 @@ if (storageMode == "Sharded" || shardingOptions.Enabled)
     if (shardingOptions.Replication.Enabled)
     {
         // Режим с репликацией - кворумные записи, автоматический failover
-        builder.Services.AddSingleton<IDocumentService>(sp =>
+        // Регистрируем ReplicationCoordinator отдельно для HealthMonitor
+        builder.Services.AddSingleton<ReplicationCoordinator>(sp =>
         {
             var httpFactory = sp.GetService<IHttpClientFactory>();
             var loggerFactory = sp.GetService<ILoggerFactory>();
-            var effectiveStorageOptions = shardingOptions.Mode == ShardingMode.Local ? storageOptions : null;
-            return ReplicationServiceBuilder.Build(shardingOptions, effectiveStorageOptions, httpFactory, loggerFactory);
+            var logger = loggerFactory?.CreateLogger<ReplicationCoordinator>();
+            
+            Func<ReplicaInfo, IReplicaClient> clientFactory;
+            if (shardingOptions.Mode == ShardingMode.Local)
+            {
+                var replicaServices = new Dictionary<string, IDocumentService>();
+                clientFactory = replica =>
+                {
+                    if (!replicaServices.TryGetValue(replica.UniqueId, out var service))
+                    {
+                        if (storageOptions != null)
+                        {
+                            var replicaStorageOptions = new StorageOptions
+                            {
+                                DataRoot = Path.Combine(storageOptions.DataRoot, $"shard-{replica.ShardId}", $"replica-{replica.ReplicaIndex}"),
+                                EnableSnapshots = storageOptions.EnableSnapshots,
+                                SnapshotEveryNOperations = storageOptions.SnapshotEveryNOperations,
+                                SnapshotMaxWalSizeMb = storageOptions.SnapshotMaxWalSizeMb,
+                                Durability = storageOptions.Durability
+                            };
+                            service = new FileDocumentService(replicaStorageOptions);
+                        }
+                        else
+                        {
+                            service = new InMemoryDocumentService();
+                        }
+                        replicaServices[replica.UniqueId] = service;
+                    }
+                    return new LocalReplicaClient(replica, service, replica.IsPrimary);
+                };
+            }
+            else
+            {
+                clientFactory = replica =>
+                {
+                    var httpClient = httpFactory?.CreateClient($"replica-{replica.UniqueId}")
+                        ?? new HttpClient { Timeout = TimeSpan.FromSeconds(shardingOptions.RequestTimeoutSeconds) };
+                    var clientLogger = loggerFactory?.CreateLogger<HttpReplicaClient>();
+                    return new HttpReplicaClient(replica, httpClient, clientLogger);
+                };
+            }
+            
+            var coordinator = new ReplicationCoordinator(shardingOptions, clientFactory, logger);
+            coordinator.Initialize();
+            return coordinator;
         });
+        
+        // Регистрируем IDocumentService
+        builder.Services.AddSingleton<IDocumentService>(sp =>
+        {
+            var coordinator = sp.GetRequiredService<ReplicationCoordinator>();
+            var router = new HashShardRouter(shardingOptions);
+            var loggerFactory = sp.GetService<ILoggerFactory>();
+            var logger = loggerFactory?.CreateLogger<ReplicatedDocumentService>();
+            return new ReplicatedDocumentService(shardingOptions, router, coordinator, logger);
+        });
+        
+        // Регистрируем HealthMonitor как hosted service только для Distributed режима
+        if (shardingOptions.Mode == ShardingMode.Distributed)
+        {
+            builder.Services.AddSingleton<HealthMonitor>(sp =>
+            {
+                var coordinator = sp.GetRequiredService<ReplicationCoordinator>();
+                var httpFactory = sp.GetService<IHttpClientFactory>();
+                var loggerFactory = sp.GetService<ILoggerFactory>();
+                var logger = sp.GetRequiredService<ILogger<HealthMonitor>>();
+                
+                Func<ReplicaInfo, IReplicaClient> clientFactory = replica =>
+                {
+                    var httpClient = httpFactory?.CreateClient($"health-{replica.UniqueId}")
+                        ?? new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+                    var clientLogger = loggerFactory?.CreateLogger<HttpReplicaClient>();
+                    return new HttpReplicaClient(replica, httpClient, clientLogger);
+                };
+                
+                return new HealthMonitor(shardingOptions.Replication, coordinator, clientFactory, logger);
+            });
+            
+            builder.Services.AddHostedService(sp =>
+            {
+                var healthMonitor = sp.GetRequiredService<HealthMonitor>();
+                var coordinator = sp.GetRequiredService<ReplicationCoordinator>();
+                return new HealthMonitorHostedServiceWrapper(healthMonitor, coordinator, shardingOptions);
+            });
+        }
     }
     else
     {
@@ -465,5 +551,63 @@ static class StorageEndpoints
         foreach (var c in Path.GetInvalidFileNameChars())
             s = s.Replace(c, '_');
         return s;
+    }
+}
+
+/// <summary>
+/// Hosted service wrapper для HealthMonitor.
+/// </summary>
+internal sealed class HealthMonitorHostedServiceWrapper : IHostedService
+{
+    private readonly HealthMonitor _healthMonitor;
+    private readonly ReplicationCoordinator _coordinator;
+    private readonly ShardingOptions _options;
+    private Task? _runningTask;
+    private CancellationTokenSource? _cts;
+
+    public HealthMonitorHostedServiceWrapper(
+        HealthMonitor healthMonitor,
+        ReplicationCoordinator coordinator,
+        ShardingOptions options)
+    {
+        _healthMonitor = healthMonitor;
+        _coordinator = coordinator;
+        _options = options;
+
+        // Подписываемся на события
+        _healthMonitor.PrimaryDown += OnPrimaryDown;
+    }
+
+    public Task StartAsync(CancellationToken cancellationToken)
+    {
+        // Пропускаем для локального режима
+        if (_options.Mode == ShardingMode.Local || !_options.Replication.Enabled)
+            return Task.CompletedTask;
+
+        _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _runningTask = _healthMonitor.StartAsync(_cts.Token);
+        return Task.CompletedTask;
+    }
+
+    public async Task StopAsync(CancellationToken cancellationToken)
+    {
+        if (_runningTask == null)
+            return;
+
+        _cts?.Cancel();
+
+        try
+        {
+            await _healthMonitor.StopAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected
+        }
+    }
+
+    private async void OnPrimaryDown(object? sender, PrimaryDownEventArgs e)
+    {
+        await _coordinator.HandlePrimaryDownAsync(e.ShardId);
     }
 }

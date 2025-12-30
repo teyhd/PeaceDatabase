@@ -22,36 +22,21 @@ services:
     hostname: peacedb-router
     environment:
       - ASPNETCORE_URLS=http://+:8080
-      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_ENVIRONMENT=Replication
       - STORAGE_MODE=Sharded
-      - SHARDING_ENABLED=true
-      - SHARDING_MODE=Distributed
-      - SHARD_COUNT=3
-      - REPLICATION_ENABLED=true
-      - REPLICA_COUNT=2
-      - WRITE_QUORUM=2
-      - READ_QUORUM=1
-      # Static shard endpoints for Shard 0
-      - Sharding__Shards__0__Id=0
-      - Sharding__Shards__0__BaseUrl=http://peacedb-shard-0-primary:8080
-      - Sharding__Shards__1__Id=0
-      - Sharding__Shards__1__BaseUrl=http://peacedb-shard-0-replica-1:8080
-      - Sharding__Shards__2__Id=0
-      - Sharding__Shards__2__BaseUrl=http://peacedb-shard-0-replica-2:8080
-      # Static shard endpoints for Shard 1
-      - Sharding__Shards__3__Id=1
-      - Sharding__Shards__3__BaseUrl=http://peacedb-shard-1-primary:8080
-      - Sharding__Shards__4__Id=1
-      - Sharding__Shards__4__BaseUrl=http://peacedb-shard-1-replica-1:8080
-      - Sharding__Shards__5__Id=1
-      - Sharding__Shards__5__BaseUrl=http://peacedb-shard-1-replica-2:8080
-      # Static shard endpoints for Shard 2
-      - Sharding__Shards__6__Id=2
-      - Sharding__Shards__6__BaseUrl=http://peacedb-shard-2-primary:8080
-      - Sharding__Shards__7__Id=2
-      - Sharding__Shards__7__BaseUrl=http://peacedb-shard-2-replica-1:8080
-      - Sharding__Shards__8__Id=2
-      - Sharding__Shards__8__BaseUrl=http://peacedb-shard-2-replica-2:8080
+      # ReplicaSets configuration (matches appsettings.Replication.json structure)
+      - Sharding__ReplicaSets__0__ShardId=0
+      - Sharding__ReplicaSets__0__Primary=http://peacedb-shard-0-primary:8080
+      - Sharding__ReplicaSets__0__Replicas__0=http://peacedb-shard-0-replica-1:8080
+      - Sharding__ReplicaSets__0__Replicas__1=http://peacedb-shard-0-replica-2:8080
+      - Sharding__ReplicaSets__1__ShardId=1
+      - Sharding__ReplicaSets__1__Primary=http://peacedb-shard-1-primary:8080
+      - Sharding__ReplicaSets__1__Replicas__0=http://peacedb-shard-1-replica-1:8080
+      - Sharding__ReplicaSets__1__Replicas__1=http://peacedb-shard-1-replica-2:8080
+      - Sharding__ReplicaSets__2__ShardId=2
+      - Sharding__ReplicaSets__2__Primary=http://peacedb-shard-2-primary:8080
+      - Sharding__ReplicaSets__2__Replicas__0=http://peacedb-shard-2-replica-1:8080
+      - Sharding__ReplicaSets__2__Replicas__1=http://peacedb-shard-2-replica-2:8080
     ports:
       - "8080:8080"
     depends_on:
@@ -90,12 +75,9 @@ services:
       - ASPNETCORE_ENVIRONMENT=Production
       - STORAGE_MODE=File
       - STORAGE_DATA_ROOT=/data
-      - SHARDING_ENABLED=true
-      - SHARDING_MODE=Distributed
-      - SHARD_COUNT=3
+      - SHARDING_ENABLED=false
       - CURRENT_SHARD_ID=0
-      - REPLICATION_ENABLED=true
-      - CURRENT_REPLICA_INDEX=0
+      - REPLICATION_ENABLED=false
     volumes:
       - shard0_primary_data:/data
     networks:
@@ -113,12 +95,9 @@ services:
       - ASPNETCORE_ENVIRONMENT=Production
       - STORAGE_MODE=File
       - STORAGE_DATA_ROOT=/data
-      - SHARDING_ENABLED=true
-      - SHARDING_MODE=Distributed
-      - SHARD_COUNT=3
+      - SHARDING_ENABLED=false
       - CURRENT_SHARD_ID=0
-      - REPLICATION_ENABLED=true
-      - CURRENT_REPLICA_INDEX=1
+      - REPLICATION_ENABLED=false
     volumes:
       - shard0_replica1_data:/data
     networks:
@@ -136,12 +115,9 @@ services:
       - ASPNETCORE_ENVIRONMENT=Production
       - STORAGE_MODE=File
       - STORAGE_DATA_ROOT=/data
-      - SHARDING_ENABLED=true
-      - SHARDING_MODE=Distributed
-      - SHARD_COUNT=3
+      - SHARDING_ENABLED=false
       - CURRENT_SHARD_ID=0
-      - REPLICATION_ENABLED=true
-      - CURRENT_REPLICA_INDEX=2
+      - REPLICATION_ENABLED=false
     volumes:
       - shard0_replica2_data:/data
     networks:
@@ -161,12 +137,9 @@ services:
       - ASPNETCORE_ENVIRONMENT=Production
       - STORAGE_MODE=File
       - STORAGE_DATA_ROOT=/data
-      - SHARDING_ENABLED=true
-      - SHARDING_MODE=Distributed
-      - SHARD_COUNT=3
+      - SHARDING_ENABLED=false
       - CURRENT_SHARD_ID=1
-      - REPLICATION_ENABLED=true
-      - CURRENT_REPLICA_INDEX=0
+      - REPLICATION_ENABLED=false
     volumes:
       - shard1_primary_data:/data
     networks:
@@ -184,12 +157,9 @@ services:
       - ASPNETCORE_ENVIRONMENT=Production
       - STORAGE_MODE=File
       - STORAGE_DATA_ROOT=/data
-      - SHARDING_ENABLED=true
-      - SHARDING_MODE=Distributed
-      - SHARD_COUNT=3
+      - SHARDING_ENABLED=false
       - CURRENT_SHARD_ID=1
-      - REPLICATION_ENABLED=true
-      - CURRENT_REPLICA_INDEX=1
+      - REPLICATION_ENABLED=false
     volumes:
       - shard1_replica1_data:/data
     networks:
@@ -207,12 +177,9 @@ services:
       - ASPNETCORE_ENVIRONMENT=Production
       - STORAGE_MODE=File
       - STORAGE_DATA_ROOT=/data
-      - SHARDING_ENABLED=true
-      - SHARDING_MODE=Distributed
-      - SHARD_COUNT=3
+      - SHARDING_ENABLED=false
       - CURRENT_SHARD_ID=1
-      - REPLICATION_ENABLED=true
-      - CURRENT_REPLICA_INDEX=2
+      - REPLICATION_ENABLED=false
     volumes:
       - shard1_replica2_data:/data
     networks:
@@ -232,12 +199,9 @@ services:
       - ASPNETCORE_ENVIRONMENT=Production
       - STORAGE_MODE=File
       - STORAGE_DATA_ROOT=/data
-      - SHARDING_ENABLED=true
-      - SHARDING_MODE=Distributed
-      - SHARD_COUNT=3
+      - SHARDING_ENABLED=false
       - CURRENT_SHARD_ID=2
-      - REPLICATION_ENABLED=true
-      - CURRENT_REPLICA_INDEX=0
+      - REPLICATION_ENABLED=false
     volumes:
       - shard2_primary_data:/data
     networks:
@@ -255,12 +219,9 @@ services:
       - ASPNETCORE_ENVIRONMENT=Production
       - STORAGE_MODE=File
       - STORAGE_DATA_ROOT=/data
-      - SHARDING_ENABLED=true
-      - SHARDING_MODE=Distributed
-      - SHARD_COUNT=3
+      - SHARDING_ENABLED=false
       - CURRENT_SHARD_ID=2
-      - REPLICATION_ENABLED=true
-      - CURRENT_REPLICA_INDEX=1
+      - REPLICATION_ENABLED=false
     volumes:
       - shard2_replica1_data:/data
     networks:
@@ -278,12 +239,9 @@ services:
       - ASPNETCORE_ENVIRONMENT=Production
       - STORAGE_MODE=File
       - STORAGE_DATA_ROOT=/data
-      - SHARDING_ENABLED=true
-      - SHARDING_MODE=Distributed
-      - SHARD_COUNT=3
+      - SHARDING_ENABLED=false
       - CURRENT_SHARD_ID=2
-      - REPLICATION_ENABLED=true
-      - CURRENT_REPLICA_INDEX=2
+      - REPLICATION_ENABLED=false
     volumes:
       - shard2_replica2_data:/data
     networks:
