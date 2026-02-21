@@ -15,11 +15,11 @@ using Microsoft.AspNetCore.Mvc;
 using PeaceDatabase.Core.Models;
 using PeaceDatabase.Protos;
 using PeaceDatabase.Storage.Binary;
+using PeaceDatabase.Storage.Compact;
 using PB = PeaceDatabase.Storage.Protobuf.ProtobufDocumentCodec;
 
 namespace PeaceDatabase.WebApi.Controllers
 {
-    // ���������� �������� ��� �������� �������� ������
     public sealed class LoadStats
     {
         public string FilePath { get; set; } = "";
@@ -74,6 +74,238 @@ namespace PeaceDatabase.WebApi.Controllers
         [HttpGet("formats")]
         public IActionResult Formats() => Ok(new[] { "json", "binary", "protobuf" });
 
+        #region Elias-Fano Compact Index Benchmark
+
+        public sealed class CompactBenchRequest
+        {
+            /// <summary>Масштабы: количество документов для тестирования</summary>
+            public List<int>? Scales { get; set; } = new() { 100, 1000, 10000, 10000 };
+            /// <summary>Токенов на документ</summary>
+            public int TokensPerDoc { get; set; } = 100;
+            /// <summary>Размер словаря (уникальных токенов)</summary>
+            public int VocabularySize { get; set; } = 1000;
+            /// <summary>Количество поисковых запросов</summary>
+            public int Queries { get; set; } = 100;
+            /// <summary>Seed для воспроизводимости</summary>
+            public int? RandomSeed { get; set; } = 42;
+        }
+
+        public sealed class CompactMemoryResult
+        {
+            public int NumDocs { get; set; }
+            public int TokensPerDoc { get; set; }
+            public double HashSetKb { get; set; }
+            public double EliasFanoKb { get; set; }
+            public double CompressionRatio { get; set; }
+            public long TotalPostings { get; set; }
+            public double BitsPerPosting { get; set; }
+        }
+
+        public sealed class CompactSpeedResult
+        {
+            public int NumDocs { get; set; }
+            public double HashSetMs { get; set; }
+            public double EliasFanoMs { get; set; }
+            public int Queries { get; set; }
+            public int HashSetResults { get; set; }
+            public int EliasFanoResults { get; set; }
+        }
+
+        public sealed class CompactBenchResponse
+        {
+            public required CompactBenchRequest Config { get; set; }
+            public required List<CompactMemoryResult> Memory { get; set; }
+            public required List<CompactSpeedResult> Speed { get; set; }
+        }
+
+        /// <summary>
+        /// Запускает бенчмарк сравнения HashSet vs Elias-Fano для полнотекстового индекса.
+        /// </summary>
+        [HttpPost("compact")]
+        [ProducesResponseType(typeof(CompactBenchResponse), StatusCodes.Status200OK)]
+        public IActionResult RunCompactBench([FromBody] CompactBenchRequest? req)
+        {
+            req ??= new CompactBenchRequest();
+            var random = new Random(req.RandomSeed ?? 42);
+
+            var scales = (req.Scales ?? new List<int> { 100, 1000, 10000 })
+                .Distinct()
+                .OrderBy(x => x)
+                .ToList();
+
+            var vocabulary = Enumerable.Range(0, req.VocabularySize)
+                .Select(i => $"word{i}")
+                .ToList();
+
+            var memoryResults = new List<CompactMemoryResult>();
+            var speedResults = new List<CompactSpeedResult>();
+
+            foreach (var numDocs in scales)
+            {
+                // Генерируем документы
+                var documents = GenerateTokenizedDocs(numDocs, req.TokensPerDoc, vocabulary, random);
+
+                // === Сравнение памяти ===
+                var (hashSetIndex, compactIndex) = BuildBothIndexes(documents);
+                var memResult = MeasureMemory(numDocs, req.TokensPerDoc, hashSetIndex, compactIndex);
+                memoryResults.Add(memResult);
+
+                // === Сравнение скорости ===
+                var queries = GenerateQueries(req.Queries, vocabulary, random);
+                var speedResult = MeasureSpeed(numDocs, hashSetIndex, compactIndex, queries);
+                speedResults.Add(speedResult);
+            }
+
+            return Ok(new CompactBenchResponse
+            {
+                Config = req,
+                Memory = memoryResults,
+                Speed = speedResults
+            });
+        }
+
+        private static List<(string DocId, List<string> Tokens)> GenerateTokenizedDocs(
+            int numDocs, int tokensPerDoc, List<string> vocabulary, Random random)
+        {
+            return Enumerable.Range(0, numDocs)
+                .Select(i =>
+                {
+                    var tokens = vocabulary
+                        .OrderBy(_ => random.Next())
+                        .Take(tokensPerDoc)
+                        .Distinct()
+                        .ToList();
+                    return ($"doc-{i}", tokens);
+                })
+                .ToList();
+        }
+
+        private static (Dictionary<string, HashSet<string>> HashSet, CompactFullTextIndex Compact) BuildBothIndexes(
+            List<(string DocId, List<string> Tokens)> documents)
+        {
+            var hashSetIndex = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+            var compactIndex = new CompactFullTextIndex();
+
+            foreach (var (docId, tokens) in documents)
+            {
+                foreach (var token in tokens)
+                {
+                    if (!hashSetIndex.TryGetValue(token, out var set))
+                        hashSetIndex[token] = set = new HashSet<string>(StringComparer.Ordinal);
+                    set.Add(docId);
+                }
+                compactIndex.Index(docId, tokens);
+            }
+            compactIndex.Compact();
+
+            return (hashSetIndex, compactIndex);
+        }
+
+        private static CompactMemoryResult MeasureMemory(
+            int numDocs, int tokensPerDoc,
+            Dictionary<string, HashSet<string>> hashSetIndex,
+            CompactFullTextIndex compactIndex)
+        {
+            // Оценка HashSet: ~80 bytes per entry (object header + hash + pointers + string)
+            long hashSetBytes = 0;
+            long totalPostings = 0;
+            foreach (var kv in hashSetIndex)
+            {
+                hashSetBytes += 40 + kv.Key.Length * 2; // key string
+                foreach (var val in kv.Value)
+                {
+                    hashSetBytes += 40 + 40 + val.Length * 2; // entry + value string
+                    totalPostings++;
+                }
+            }
+
+            var stats = compactIndex.GetStats();
+
+            return new CompactMemoryResult
+            {
+                NumDocs = numDocs,
+                TokensPerDoc = tokensPerDoc,
+                HashSetKb = hashSetBytes / 1024.0,
+                EliasFanoKb = stats.TotalSizeBytes / 1024.0,
+                CompressionRatio = hashSetBytes > 0 ? (double)hashSetBytes / (stats.TotalSizeBytes + 1) : 0,
+                TotalPostings = totalPostings,
+                BitsPerPosting = totalPostings > 0 ? stats.TotalSizeBytes * 8.0 / totalPostings : 0
+            };
+        }
+
+        private static List<string[]> GenerateQueries(int count, List<string> vocabulary, Random random)
+        {
+            return Enumerable.Range(0, count)
+                .Select(_ => vocabulary
+                    .OrderBy(__ => random.Next())
+                    .Take(random.Next(1, 4))
+                    .ToArray())
+                .ToList();
+        }
+
+        private static CompactSpeedResult MeasureSpeed(
+            int numDocs,
+            Dictionary<string, HashSet<string>> hashSetIndex,
+            CompactFullTextIndex compactIndex,
+            List<string[]> queries)
+        {
+            // Warmup
+            foreach (var q in queries.Take(10))
+            {
+                SearchHashSet(hashSetIndex, q);
+                compactIndex.Search(q);
+            }
+
+            // HashSet benchmark
+            var swHashSet = Stopwatch.StartNew();
+            int hashSetResults = 0;
+            foreach (var q in queries)
+            {
+                hashSetResults += SearchHashSet(hashSetIndex, q).Count;
+            }
+            swHashSet.Stop();
+
+            // Elias-Fano benchmark (using Search which unpacks to list first)
+            var swCompact = Stopwatch.StartNew();
+            int compactResults = 0;
+            foreach (var q in queries)
+            {
+                compactResults += compactIndex.Search(q).Count;
+            }
+            swCompact.Stop();
+
+            return new CompactSpeedResult
+            {
+                NumDocs = numDocs,
+                HashSetMs = swHashSet.Elapsed.TotalMilliseconds,
+                EliasFanoMs = swCompact.Elapsed.TotalMilliseconds,
+                Queries = queries.Count,
+                HashSetResults = hashSetResults,
+                EliasFanoResults = compactResults
+            };
+        }
+
+        private static List<string> SearchHashSet(Dictionary<string, HashSet<string>> index, string[] tokens)
+        {
+            HashSet<string>? result = null;
+            foreach (var token in tokens)
+            {
+                if (!index.TryGetValue(token, out var set))
+                    return new List<string>();
+
+                if (result == null)
+                    result = new HashSet<string>(set, StringComparer.Ordinal);
+                else
+                    result.IntersectWith(set);
+
+                if (result.Count == 0)
+                    return new List<string>();
+            }
+            return result?.ToList() ?? new List<string>();
+        }
+
+        #endregion
+
         [HttpPost("run")]
         [ProducesResponseType(typeof(RunResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> Run([FromBody, Required] BenchRequest req, CancellationToken ct)
@@ -110,7 +342,6 @@ namespace PeaceDatabase.WebApi.Controllers
                 // Avro disabled for build stability
             }
 
-            // ����������� ���� � ��������� �������� ������
             var meta = new
             {
                 source = req.Source.Kind,

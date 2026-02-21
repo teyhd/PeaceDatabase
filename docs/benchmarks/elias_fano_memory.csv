@@ -1,0 +1,4 @@
+num_docs,tokens_per_doc,hashset_kb,elias_fano_kb,compression_ratio,total_postings,bits_per_posting
+100,10,122.70,35.50,3.46,1000,290.62
+1000,50,4631.60,88.70,52.21,50000,14.53
+10000,100,93585.70,824.30,113.54,1000000,6.75

@@ -51,13 +51,25 @@ namespace PeaceDatabase.Storage.InMemory.Indexing
             }
 
             // FullText: Content + все string-поля
+            var allTokens = new List<string>();
+
             foreach (var s in fields.StringsForFulltext)
                 foreach (var tok in FullTextTokenizer.Tokenize(s))
+                {
                     AddToken(st, tok, id);
+                    allTokens.Add(tok);
+                }
 
             if (!string.IsNullOrWhiteSpace(doc.Content))
                 foreach (var tok in FullTextTokenizer.Tokenize(doc.Content))
+                {
                     AddToken(st, tok, id);
+                    allTokens.Add(tok);
+                }
+
+            // Также индексируем в компактный индекс
+            if (allTokens.Count > 0)
+                st.CompactFullText.Index(id, allTokens);
         }
 
         internal static void Unindex(DbState st, Document doc)
@@ -77,13 +89,25 @@ namespace PeaceDatabase.Storage.InMemory.Indexing
                     RemoveFromTag(st, tag.Trim(), id);
             }
 
+            var allTokens = new List<string>();
+
             foreach (var s in fields.StringsForFulltext)
                 foreach (var tok in FullTextTokenizer.Tokenize(s))
+                {
                     RemoveToken(st, tok, id);
+                    allTokens.Add(tok);
+                }
 
             if (!string.IsNullOrWhiteSpace(doc.Content))
                 foreach (var tok in FullTextTokenizer.Tokenize(doc.Content))
+                {
                     RemoveToken(st, tok, id);
+                    allTokens.Add(tok);
+                }
+
+            // Также удаляем из компактного индекса
+            if (allTokens.Count > 0)
+                st.CompactFullText.Unindex(id, allTokens);
         }
 
         internal static FlatFields ExtractFlatFields(Document doc)

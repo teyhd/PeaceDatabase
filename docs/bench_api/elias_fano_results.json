@@ -1,0 +1,57 @@
+{
+  "memory": [
+    {
+      "num_docs": 100,
+      "tokens_per_doc": 100,
+      "hashset_kb": 949.00390625,
+      "elias_fano_kb": 56.42578125,
+      "compression_ratio": 16.818331285370622,
+      "total_postings": 10000,
+      "bits_per_posting": 46.224
+    },
+    {
+      "num_docs": 1000,
+      "tokens_per_doc": 100,
+      "hashset_kb": 9210.72265625,
+      "elias_fano_kb": 124.2109375,
+      "compression_ratio": 74.15329459954557,
+      "total_postings": 100000,
+      "bits_per_posting": 10.17536
+    },
+    {
+      "num_docs": 10000,
+      "tokens_per_doc": 100,
+      "hashset_kb": 93585.72265625,
+      "elias_fano_kb": 824.515625,
+      "compression_ratio": 113.50374568432024,
+      "total_postings": 1000000,
+      "bits_per_posting": 6.754432
+    }
+  ],
+  "speed": [
+    {
+      "num_docs": 100,
+      "hashset_ms": 0.1926,
+      "elias_fano_ms": 0.4396,
+      "queries": 100,
+      "hashset_results": 278,
+      "elias_fano_results": 278
+    },
+    {
+      "num_docs": 1000,
+      "hashset_ms": 0.6463,
+      "elias_fano_ms": 4.3443,
+      "queries": 100,
+      "hashset_results": 3760,
+      "elias_fano_results": 3628
+    },
+    {
+      "num_docs": 10000,
+      "hashset_ms": 6.2981,
+      "elias_fano_ms": 37.1449,
+      "queries": 100,
+      "hashset_results": 26105,
+      "elias_fano_results": 6244
+    }
+  ]
+}

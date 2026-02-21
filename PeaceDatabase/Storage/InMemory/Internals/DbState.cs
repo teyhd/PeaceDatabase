@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.Threading;
+using PeaceDatabase.Storage.Compact;
 
 namespace PeaceDatabase.Storage.InMemory.Internals
 {
@@ -26,8 +27,21 @@ namespace PeaceDatabase.Storage.InMemory.Internals
         public readonly Dictionary<string, HashSet<string>> TagIndex =
             new(System.StringComparer.OrdinalIgnoreCase);
 
-        // Полнотекст: token -> set(ids)
+        // Полнотекст: token -> set(ids) (обычный индекс)
         public readonly Dictionary<string, HashSet<string>> FullText =
             new(System.StringComparer.Ordinal);
+
+        // ---- Компактный полнотекстовый индекс (Elias-Fano) ----
+        /// <summary>
+        /// Компактный полнотекстовый индекс на основе Elias-Fano encoding.
+        /// Используется параллельно с обычным индексом для сравнения.
+        /// </summary>
+        public readonly CompactFullTextIndex CompactFullText = new();
+
+        /// <summary>
+        /// Флаг: использовать компактный индекс для поиска.
+        /// По умолчанию false — используется обычный HashSet-индекс.
+        /// </summary>
+        public bool UseCompactIndex { get; set; }
     }
 }

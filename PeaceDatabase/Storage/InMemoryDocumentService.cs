@@ -5,6 +5,7 @@ using System.Text.Json;
 using PeaceDatabase.Core.Services;
 using System.Collections.Concurrent;
 using PeaceDatabase.Core.Models;
+using PeaceDatabase.Storage.Compact;
 using PeaceDatabase.Storage.InMemory.Indexing;
 using PeaceDatabase.Storage.InMemory.Internals;
 
@@ -430,6 +431,14 @@ namespace PeaceDatabase.Storage.InMemory
             st.Lock.EnterReadLock();
             try
             {
+                // Если включён компактный режим, используем Elias-Fano индекс
+                if (st.UseCompactIndex)
+                {
+                    var docIds = st.CompactFullText.SearchCompact(tokens, skip, limit);
+                    return MaterializeByIds(st, docIds);
+                }
+
+                // Обычный поиск через HashSet
                 HashSet<string>? acc = null;
                 foreach (var tok in tokens)
                 {
@@ -453,6 +462,79 @@ namespace PeaceDatabase.Storage.InMemory
                 foreach (var x in a) if (b.Contains(x)) res.Add(x);
                 return res;
             }
+        }
+
+        /// <summary>
+        /// Полнотекстовый поиск с использованием компактного Elias-Fano индекса.
+        /// Игнорирует флаг UseCompactIndex и всегда использует компактный индекс.
+        /// </summary>
+        public IEnumerable<Document> FullTextSearchCompact(string db, string query, int skip = 0, int limit = 100)
+        {
+            if (!TryGetDb(db, out var st)) return Enumerable.Empty<Document>();
+            if (string.IsNullOrWhiteSpace(query)) return Enumerable.Empty<Document>();
+            if (limit <= 0) return Enumerable.Empty<Document>();
+            if (limit > 1000) limit = 1000;
+            if (skip < 0) skip = 0;
+
+            var tokens = Indexing.FullTextTokenizer.Tokenize(query).ToList();
+            if (tokens.Count == 0) return Enumerable.Empty<Document>();
+
+            st.Lock.EnterReadLock();
+            try
+            {
+                var docIds = st.CompactFullText.SearchCompact(tokens, skip, limit);
+                return MaterializeByIds(st, docIds);
+            }
+            finally { st.Lock.ExitReadLock(); }
+        }
+
+        /// <summary>
+        /// Включает или выключает использование компактного индекса для полнотекстового поиска.
+        /// </summary>
+        public void SetUseCompactIndex(string db, bool useCompact)
+        {
+            if (!TryGetDb(db, out var st)) return;
+            st.Lock.EnterWriteLock();
+            try
+            {
+                st.UseCompactIndex = useCompact;
+                if (useCompact)
+                {
+                    // Сжимаем индекс при включении компактного режима
+                    st.CompactFullText.Compact();
+                }
+            }
+            finally { st.Lock.ExitWriteLock(); }
+        }
+
+        /// <summary>
+        /// Возвращает статистику компактного индекса.
+        /// </summary>
+        public Compact.CompactIndexStats? GetCompactIndexStats(string db)
+        {
+            if (!TryGetDb(db, out var st)) return null;
+            st.Lock.EnterReadLock();
+            try
+            {
+                return st.CompactFullText.GetStats();
+            }
+            finally { st.Lock.ExitReadLock(); }
+        }
+
+        /// <summary>
+        /// Материализует документы по списку ID (для компактного индекса).
+        /// </summary>
+        private static List<Document> MaterializeByIds(DbState st, IReadOnlyList<string> docIds)
+        {
+            var results = new List<Document>(docIds.Count);
+            foreach (var id in docIds)
+            {
+                if (!st.Heads.TryGetValue(id, out var head) || head.Deleted) continue;
+                if (!st.Revs.TryGetValue(id, out var revMap)) continue;
+                if (!revMap.TryGetValue(head.Rev, out var json)) continue;
+                results.Add(JsonSerializer.Deserialize<Document>(json, JsonUtil.JsonOpts)!);
+            }
+            return results;
         }
 
         // --- Общий материализатор из множества id в документы-головы ---
