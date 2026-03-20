@@ -63,6 +63,44 @@ public sealed class ReplicationOptions
     /// Null означает, что инстанс является роутером.
     /// </summary>
     public int? CurrentReplicaIndex { get; set; }
+
+    // ==================== Raft Consensus Options ====================
+
+    /// <summary>
+    /// Включён ли Raft консенсус (heartbeats, elections).
+    /// </summary>
+    public bool RaftEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Интервал отправки heartbeat лидером (в миллисекундах).
+    /// Рекомендуется: HeartbeatIntervalMs &lt;&lt; ElectionTimeoutMinMs
+    /// </summary>
+    public int HeartbeatIntervalMs { get; set; } = 150;
+
+    /// <summary>
+    /// Минимальный таймаут выборов (в миллисекундах).
+    /// Если follower не получает heartbeat за это время, начинает выборы.
+    /// </summary>
+    public int ElectionTimeoutMinMs { get; set; } = 300;
+
+    /// <summary>
+    /// Максимальный таймаут выборов (в миллисекундах).
+    /// Фактический таймаут выбирается случайно между Min и Max.
+    /// Рандомизация предотвращает split vote.
+    /// </summary>
+    public int ElectionTimeoutMaxMs { get; set; } = 500;
+
+    /// <summary>
+    /// URL-адреса других узлов в Raft кластере (peers).
+    /// Используется data nodes для автоматических выборов.
+    /// Формат: "http://host1:port,http://host2:port"
+    /// </summary>
+    public List<string> RaftPeers { get; set; } = new();
+
+    /// <summary>
+    /// URL текущего узла (для идентификации себя среди peers).
+    /// </summary>
+    public string? RaftSelfUrl { get; set; }
 }
 
 /// <summary>

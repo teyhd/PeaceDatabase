@@ -114,6 +114,32 @@ if (int.TryParse(Environment.GetEnvironmentVariable("READ_QUORUM"), out var read
 if (int.TryParse(Environment.GetEnvironmentVariable("CURRENT_REPLICA_INDEX"), out var currentReplicaIndex))
     shardingOptions.Replication.CurrentReplicaIndex = currentReplicaIndex;
 
+// ---------- Raft Configuration (for data nodes) ----------
+if (bool.TryParse(Environment.GetEnvironmentVariable("RAFT_ENABLED"), out var raftEnabled))
+    shardingOptions.Replication.RaftEnabled = raftEnabled;
+
+var raftSelfUrl = Environment.GetEnvironmentVariable("RAFT_SELF_URL");
+if (!string.IsNullOrEmpty(raftSelfUrl))
+    shardingOptions.Replication.RaftSelfUrl = raftSelfUrl;
+
+var raftPeersEnv = Environment.GetEnvironmentVariable("RAFT_PEERS");
+if (!string.IsNullOrEmpty(raftPeersEnv))
+{
+    shardingOptions.Replication.RaftPeers = raftPeersEnv
+        .Split(',', StringSplitOptions.RemoveEmptyEntries)
+        .Select(p => p.Trim())
+        .ToList();
+}
+
+if (int.TryParse(Environment.GetEnvironmentVariable("RAFT_HEARTBEAT_MS"), out var raftHeartbeatMs))
+    shardingOptions.Replication.HeartbeatIntervalMs = raftHeartbeatMs;
+
+if (int.TryParse(Environment.GetEnvironmentVariable("RAFT_ELECTION_MIN_MS"), out var raftElectionMinMs))
+    shardingOptions.Replication.ElectionTimeoutMinMs = raftElectionMinMs;
+
+if (int.TryParse(Environment.GetEnvironmentVariable("RAFT_ELECTION_MAX_MS"), out var raftElectionMaxMs))
+    shardingOptions.Replication.ElectionTimeoutMaxMs = raftElectionMaxMs;
+
 // Регистрируем ShardingOptions для DI (нужно для ReplicationController)
 builder.Services.AddSingleton(shardingOptions);
 
@@ -191,6 +217,21 @@ if (storageMode == "Sharded" || shardingOptions.Enabled)
         // Регистрируем HealthMonitor как hosted service только для Distributed режима
         if (shardingOptions.Mode == ShardingMode.Distributed)
         {
+            // Регистрируем RaftState (единственный экземпляр на узел)
+            // NOTE: All nodes start as Follower - elections determine the leader
+            builder.Services.AddSingleton<RaftState>(sp =>
+            {
+                var nodeId = $"{shardingOptions.CurrentShardId}-{shardingOptions.Replication.CurrentReplicaIndex ?? 0}";
+                var loggerFactory = sp.GetService<ILoggerFactory>();
+                var logger = loggerFactory?.CreateLogger<RaftState>();
+                
+                var raftState = new RaftState(nodeId);
+                // Start as Follower - HeartbeatService will handle elections
+                logger?.LogInformation("RaftState initialized for node {NodeId} as Follower", nodeId);
+                
+                return raftState;
+            });
+            
             builder.Services.AddSingleton<HealthMonitor>(sp =>
             {
                 var coordinator = sp.GetRequiredService<ReplicationCoordinator>();
@@ -215,6 +256,34 @@ if (storageMode == "Sharded" || shardingOptions.Enabled)
                 var coordinator = sp.GetRequiredService<ReplicationCoordinator>();
                 return new HealthMonitorHostedServiceWrapper(healthMonitor, coordinator, shardingOptions);
             });
+            
+            // Регистрируем HeartbeatService для Raft консенсуса
+            if (shardingOptions.Replication.RaftEnabled)
+            {
+                builder.Services.AddHostedService<HeartbeatService>(sp =>
+                {
+                    var coordinator = sp.GetRequiredService<ReplicationCoordinator>();
+                    var raftState = sp.GetRequiredService<RaftState>();
+                    var httpFactory = sp.GetService<IHttpClientFactory>();
+                    var loggerFactory = sp.GetService<ILoggerFactory>();
+                    var logger = sp.GetRequiredService<ILogger<HeartbeatService>>();
+                    
+                    Func<ReplicaInfo, IReplicaClient> clientFactory = replica =>
+                    {
+                        var httpClient = httpFactory?.CreateClient($"heartbeat-{replica.UniqueId}")
+                            ?? new HttpClient { Timeout = TimeSpan.FromMilliseconds(shardingOptions.Replication.HeartbeatIntervalMs * 2) };
+                        var clientLogger = loggerFactory?.CreateLogger<HttpReplicaClient>();
+                        return new HttpReplicaClient(replica, httpClient, clientLogger);
+                    };
+                    
+                    return new HeartbeatService(
+                        shardingOptions.Replication,
+                        coordinator,
+                        raftState,
+                        clientFactory,
+                        logger);
+                });
+            }
         }
     }
     else
@@ -236,6 +305,127 @@ else if (storageMode == "File")
 else
 {
     builder.Services.AddSingleton<IDocumentService, InMemoryDocumentService>();
+}
+
+// ---------- Raft for Data Nodes (standalone replicas with peer configuration) ----------
+// If RAFT_ENABLED=true and RAFT_PEERS is set, enable Raft consensus on this data node
+if (shardingOptions.Replication.RaftEnabled 
+    && shardingOptions.Replication.RaftPeers.Count > 0 
+    && !string.IsNullOrEmpty(shardingOptions.Replication.RaftSelfUrl))
+{
+    // Register RaftState for this data node
+    // NOTE: All nodes start as Follower - elections will determine the leader
+    builder.Services.AddSingleton<RaftState>(sp =>
+    {
+        var nodeId = $"{shardingOptions.CurrentShardId}-{shardingOptions.Replication.CurrentReplicaIndex ?? 0}";
+        var loggerFactory = sp.GetService<ILoggerFactory>();
+        var logger = loggerFactory?.CreateLogger<RaftState>();
+        logger?.LogInformation("Initializing RaftState for node {NodeId} as Follower", nodeId);
+        
+        var raftState = new RaftState(nodeId);
+        // Start as Follower - HeartbeatService will trigger election if no leader heartbeat received
+        // This ensures proper term synchronization when nodes rejoin the cluster
+        
+        return raftState;
+    });
+    
+    // Create HttpClientFactory manually for data nodes (they might not have AddHttpClient)
+    builder.Services.AddHttpClient();
+    
+    // Register HeartbeatService as hosted service for Raft consensus
+    builder.Services.AddHostedService<HeartbeatService>(sp =>
+    {
+        var raftState = sp.GetRequiredService<RaftState>();
+        var httpFactory = sp.GetRequiredService<IHttpClientFactory>();
+        var loggerFactory = sp.GetService<ILoggerFactory>();
+        var logger = sp.GetRequiredService<ILogger<HeartbeatService>>();
+        
+        // Build a local ReplicaSet from RAFT_PEERS + self
+        // Determine primary URL: if current node is index 0, self is primary; otherwise first peer is primary
+        var selfUrl = shardingOptions.Replication.RaftSelfUrl!;
+        var peerUrls = shardingOptions.Replication.RaftPeers;
+        var localReplicaIndex = shardingOptions.Replication.CurrentReplicaIndex ?? 0;
+        
+        // Build ordered list: primary first, then replicas
+        // If localReplicaIndex == 0, self is primary
+        // Otherwise, we need to reconstruct the original order
+        string primaryUrl;
+        List<string> replicaUrls;
+        
+        if (localReplicaIndex == 0)
+        {
+            // This node is primary
+            primaryUrl = selfUrl;
+            replicaUrls = peerUrls.ToList();
+        }
+        else
+        {
+            // This node is a replica; first peer should be primary (index 0)
+            // We need to figure out where self fits in the list
+            // Assume peers are ordered: first is always primary, rest are other replicas
+            primaryUrl = peerUrls.FirstOrDefault() ?? selfUrl;
+            replicaUrls = new List<string>();
+            
+            // Add replicas in order, inserting self at the right position
+            var otherPeers = peerUrls.Skip(1).ToList();
+            for (int i = 1; i <= peerUrls.Count; i++)
+            {
+                if (i == localReplicaIndex)
+                {
+                    replicaUrls.Add(selfUrl);
+                }
+                else if (i - 1 < otherPeers.Count)
+                {
+                    replicaUrls.Add(otherPeers[i > localReplicaIndex ? i - 2 : i - 1]);
+                }
+            }
+            // Ensure self is added if not already
+            if (!replicaUrls.Contains(selfUrl))
+            {
+                replicaUrls.Add(selfUrl);
+            }
+        }
+        
+        // Create ReplicaSet for this shard using proper initialization
+        var shardId = shardingOptions.CurrentShardId ?? 0;
+        var replicaSet = new ReplicaSet(
+            shardId,
+            shardingOptions.Replication,
+            loggerFactory?.CreateLogger<ReplicaSet>());
+        
+        replicaSet.Initialize(new ReplicaSetConfig
+        {
+            ShardId = shardId,
+            Primary = primaryUrl,
+            Replicas = replicaUrls
+        });
+        
+        replicaSet.LocalReplicaIndex = localReplicaIndex;
+        
+        // Create a minimal ReplicationCoordinator with just this shard
+        Func<ReplicaInfo, IReplicaClient> clientFactory = replica =>
+        {
+            var httpClient = httpFactory.CreateClient($"raft-{replica.UniqueId}");
+            httpClient.Timeout = TimeSpan.FromMilliseconds(shardingOptions.Replication.HeartbeatIntervalMs * 3);
+            var clientLogger = loggerFactory?.CreateLogger<HttpReplicaClient>();
+            return new HttpReplicaClient(replica, httpClient, clientLogger);
+        };
+        
+        var coordinator = new ReplicationCoordinator(shardingOptions, clientFactory, loggerFactory?.CreateLogger<ReplicationCoordinator>());
+        // Add the local replica set
+        coordinator.AddReplicaSet(replicaSet);
+        
+        logger.LogInformation("Starting HeartbeatService for data node {SelfUrl} with {PeerCount} peers",
+            shardingOptions.Replication.RaftSelfUrl,
+            shardingOptions.Replication.RaftPeers.Count);
+        
+        return new HeartbeatService(
+            shardingOptions.Replication,
+            coordinator,
+            raftState,
+            clientFactory,
+            logger);
+    });
 }
 
 // ---------- Health / CORS / Swagger ----------

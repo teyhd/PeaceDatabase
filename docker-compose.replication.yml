@@ -79,6 +79,13 @@ services:
       - CURRENT_SHARD_ID=0
       - CURRENT_REPLICA_INDEX=0
       - REPLICATION_ENABLED=false
+      # Raft consensus configuration
+      - RAFT_ENABLED=true
+      - RAFT_SELF_URL=http://peacedb-shard-0-primary:8080
+      - RAFT_PEERS=http://peacedb-shard-0-replica-1:8080,http://peacedb-shard-0-replica-2:8080
+      - RAFT_HEARTBEAT_MS=500
+      - RAFT_ELECTION_MIN_MS=1500
+      - RAFT_ELECTION_MAX_MS=3000
     volumes:
       - shard0_primary_data:/data
     networks:
@@ -100,6 +107,13 @@ services:
       - CURRENT_SHARD_ID=0
       - CURRENT_REPLICA_INDEX=1
       - REPLICATION_ENABLED=false
+      # Raft consensus configuration
+      - RAFT_ENABLED=true
+      - RAFT_SELF_URL=http://peacedb-shard-0-replica-1:8080
+      - RAFT_PEERS=http://peacedb-shard-0-primary:8080,http://peacedb-shard-0-replica-2:8080
+      - RAFT_HEARTBEAT_MS=500
+      - RAFT_ELECTION_MIN_MS=1500
+      - RAFT_ELECTION_MAX_MS=3000
     volumes:
       - shard0_replica1_data:/data
     networks:
@@ -121,6 +135,13 @@ services:
       - CURRENT_SHARD_ID=0
       - CURRENT_REPLICA_INDEX=2
       - REPLICATION_ENABLED=false
+      # Raft consensus configuration
+      - RAFT_ENABLED=true
+      - RAFT_SELF_URL=http://peacedb-shard-0-replica-2:8080
+      - RAFT_PEERS=http://peacedb-shard-0-primary:8080,http://peacedb-shard-0-replica-1:8080
+      - RAFT_HEARTBEAT_MS=500
+      - RAFT_ELECTION_MIN_MS=1500
+      - RAFT_ELECTION_MAX_MS=3000
     volumes:
       - shard0_replica2_data:/data
     networks:
@@ -144,6 +165,13 @@ services:
       - CURRENT_SHARD_ID=1
       - CURRENT_REPLICA_INDEX=0
       - REPLICATION_ENABLED=false
+      # Raft consensus configuration
+      - RAFT_ENABLED=true
+      - RAFT_SELF_URL=http://peacedb-shard-1-primary:8080
+      - RAFT_PEERS=http://peacedb-shard-1-replica-1:8080,http://peacedb-shard-1-replica-2:8080
+      - RAFT_HEARTBEAT_MS=500
+      - RAFT_ELECTION_MIN_MS=1500
+      - RAFT_ELECTION_MAX_MS=3000
     volumes:
       - shard1_primary_data:/data
     networks:
@@ -165,6 +193,13 @@ services:
       - CURRENT_SHARD_ID=1
       - CURRENT_REPLICA_INDEX=1
       - REPLICATION_ENABLED=false
+      # Raft consensus configuration
+      - RAFT_ENABLED=true
+      - RAFT_SELF_URL=http://peacedb-shard-1-replica-1:8080
+      - RAFT_PEERS=http://peacedb-shard-1-primary:8080,http://peacedb-shard-1-replica-2:8080
+      - RAFT_HEARTBEAT_MS=500
+      - RAFT_ELECTION_MIN_MS=1500
+      - RAFT_ELECTION_MAX_MS=3000
     volumes:
       - shard1_replica1_data:/data
     networks:
@@ -186,6 +221,13 @@ services:
       - CURRENT_SHARD_ID=1
       - CURRENT_REPLICA_INDEX=2
       - REPLICATION_ENABLED=false
+      # Raft consensus configuration
+      - RAFT_ENABLED=true
+      - RAFT_SELF_URL=http://peacedb-shard-1-replica-2:8080
+      - RAFT_PEERS=http://peacedb-shard-1-primary:8080,http://peacedb-shard-1-replica-1:8080
+      - RAFT_HEARTBEAT_MS=500
+      - RAFT_ELECTION_MIN_MS=1500
+      - RAFT_ELECTION_MAX_MS=3000
     volumes:
       - shard1_replica2_data:/data
     networks:
@@ -209,6 +251,13 @@ services:
       - CURRENT_SHARD_ID=2
       - CURRENT_REPLICA_INDEX=0
       - REPLICATION_ENABLED=false
+      # Raft consensus configuration
+      - RAFT_ENABLED=true
+      - RAFT_SELF_URL=http://peacedb-shard-2-primary:8080
+      - RAFT_PEERS=http://peacedb-shard-2-replica-1:8080,http://peacedb-shard-2-replica-2:8080
+      - RAFT_HEARTBEAT_MS=500
+      - RAFT_ELECTION_MIN_MS=1500
+      - RAFT_ELECTION_MAX_MS=3000
     volumes:
       - shard2_primary_data:/data
     networks:
@@ -230,6 +279,13 @@ services:
       - CURRENT_SHARD_ID=2
       - CURRENT_REPLICA_INDEX=1
       - REPLICATION_ENABLED=false
+      # Raft consensus configuration
+      - RAFT_ENABLED=true
+      - RAFT_SELF_URL=http://peacedb-shard-2-replica-1:8080
+      - RAFT_PEERS=http://peacedb-shard-2-primary:8080,http://peacedb-shard-2-replica-2:8080
+      - RAFT_HEARTBEAT_MS=500
+      - RAFT_ELECTION_MIN_MS=1500
+      - RAFT_ELECTION_MAX_MS=3000
     volumes:
       - shard2_replica1_data:/data
     networks:
@@ -251,6 +307,13 @@ services:
       - CURRENT_SHARD_ID=2
       - CURRENT_REPLICA_INDEX=2
       - REPLICATION_ENABLED=false
+      # Raft consensus configuration
+      - RAFT_ENABLED=true
+      - RAFT_SELF_URL=http://peacedb-shard-2-replica-2:8080
+      - RAFT_PEERS=http://peacedb-shard-2-primary:8080,http://peacedb-shard-2-replica-1:8080
+      - RAFT_HEARTBEAT_MS=500
+      - RAFT_ELECTION_MIN_MS=1500
+      - RAFT_ELECTION_MAX_MS=3000
     volumes:
       - shard2_replica2_data:/data
     networks:

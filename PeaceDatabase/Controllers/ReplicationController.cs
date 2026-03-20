@@ -26,6 +26,9 @@ public class ReplicationController : ControllerBase
     private static string? _currentPrimaryUrl;
     private static long _lastReplicatedSeq;
     private static readonly object _initLock = new object();
+    
+    // Raft consensus state
+    private static RaftState? _raftState;
 
     public ReplicationController(
         IDocumentService svc,
@@ -56,10 +59,26 @@ public class ReplicationController : ControllerBase
                         _logger.LogInformation("Node initialized as replica (ReplicaIndex={ReplicaIndex})", 
                             _shardingOptions.Replication.CurrentReplicaIndex);
                     }
+                    // Initialize Raft state
+                    var nodeId = $"{_shardingOptions.CurrentShardId}-{_shardingOptions.Replication.CurrentReplicaIndex ?? 0}";
+                    _raftState = new RaftState(nodeId);
+                    if (_isPrimary)
+                    {
+                        _raftState.BecomeLeader();
+                    }
+                    
                     _isInitialized = true;
                 }
             }
         }
+    }
+    
+    /// <summary>
+    /// Получает текущее Raft состояние (thread-safe).
+    /// </summary>
+    private static RaftState GetRaftState()
+    {
+        return _raftState ?? throw new InvalidOperationException("RaftState not initialized");
     }
 
     /// <summary>
@@ -84,18 +103,25 @@ public class ReplicationController : ControllerBase
 
         var uptime = DateTimeOffset.UtcNow - _startTime;
 
+        var raftState = GetRaftState();
+        var snapshot = raftState.GetSnapshot();
+
         return Ok(new ReplicationStateResponse
         {
             Healthy = true,
-            IsPrimary = _isPrimary,
+            IsPrimary = raftState.IsLeader,
             Seq = totalSeq,
             WalPosition = null, // WAL position не поддерживается напрямую
             UptimeSeconds = uptime.TotalSeconds,
-            CurrentPrimaryUrl = _currentPrimaryUrl,
-            ReplicationLag = _isPrimary ? 0 : Math.Max(0, totalSeq - _lastReplicatedSeq),
+            CurrentPrimaryUrl = snapshot.CurrentLeaderId != null ? _currentPrimaryUrl : null,
+            ReplicationLag = raftState.IsLeader ? 0 : Math.Max(0, totalSeq - _lastReplicatedSeq),
             LastSyncAt = DateTimeOffset.UtcNow,
             ShardId = _shardingOptions.CurrentShardId,
-            ReplicaIndex = _shardingOptions.Replication.CurrentReplicaIndex
+            ReplicaIndex = _shardingOptions.Replication.CurrentReplicaIndex,
+            // Raft state
+            CurrentTerm = snapshot.CurrentTerm,
+            VotedFor = snapshot.VotedFor,
+            Role = snapshot.Role.ToString()
         });
     }
 
@@ -249,20 +275,34 @@ public class ReplicationController : ControllerBase
     }
 
     /// <summary>
-    /// Продвигает этот узел в primary.
+    /// Продвигает этот узел в primary (Leader).
+    /// Принимает опциональный терм для синхронизации с кластером.
     /// </summary>
     [HttpPost("promote")]
     [ProducesResponseType(typeof(PromoteResponse), StatusCodes.Status200OK)]
-    public IActionResult Promote()
+    public IActionResult Promote([FromQuery] long? term = null)
     {
+        var raftState = GetRaftState();
+        
+        // If a term is provided, adopt it first (sync with cluster)
+        if (term.HasValue && term.Value > raftState.CurrentTerm)
+        {
+            raftState.UpdateTerm(term.Value);
+            _logger.LogInformation("Adopted term {Term} before promotion", term.Value);
+        }
+        
+        // Increment term and become leader (simulates winning an election)
+        var newTerm = raftState.StartElection(); // This increments term and votes for self
+        raftState.BecomeLeader();
+        
         _isPrimary = true;
         _currentPrimaryUrl = null;
-        _logger.LogInformation("This node has been promoted to primary");
+        _logger.LogInformation("This node has been promoted to Leader (term={Term})", raftState.CurrentTerm);
 
         return Ok(new PromoteResponse
         {
             Ok = true,
-            Message = "Promoted to primary",
+            Message = $"Promoted to Leader (term={raftState.CurrentTerm})",
             PromotedAt = DateTimeOffset.UtcNow
         });
     }
@@ -311,6 +351,107 @@ public class ReplicationController : ControllerBase
         });
     }
 
+    // ==================== Raft Consensus Endpoints ====================
+
+    /// <summary>
+    /// Обрабатывает запрос на голосование (RequestVote RPC в Raft).
+    /// </summary>
+    [HttpPost("vote")]
+    [ProducesResponseType(typeof(VoteResponse), StatusCodes.Status200OK)]
+    public IActionResult RequestVote([FromBody] VoteRequest request)
+    {
+        if (request == null)
+            return BadRequest(new ErrorResponse { Ok = false, Error = "Request body is required" });
+
+        var raftState = GetRaftState();
+        
+        // Получаем наш текущий seq для сравнения логов
+        long mySeq = 0;
+        try
+        {
+            var stats = _svc.Stats("test");
+            mySeq = stats.Seq;
+        }
+        catch { /* игнорируем */ }
+
+        // Пытаемся отдать голос
+        var voteGranted = raftState.Vote(
+            request.Term,
+            request.CandidateId,
+            request.LastSeq,
+            mySeq);
+
+        _logger.LogInformation(
+            "Vote request from {CandidateId} term={Term}: {Result}",
+            request.CandidateId, request.Term, voteGranted ? "GRANTED" : "DENIED");
+
+        return Ok(new VoteResponse
+        {
+            Term = raftState.CurrentTerm,
+            VoteGranted = voteGranted
+        });
+    }
+
+    /// <summary>
+    /// Обрабатывает heartbeat от лидера (упрощённый AppendEntries RPC).
+    /// </summary>
+    [HttpPost("heartbeat")]
+    [ProducesResponseType(typeof(HeartbeatResponse), StatusCodes.Status200OK)]
+    public IActionResult Heartbeat([FromBody] HeartbeatRequest request)
+    {
+        if (request == null)
+            return BadRequest(new ErrorResponse { Ok = false, Error = "Request body is required" });
+
+        var raftState = GetRaftState();
+        
+        // Принимаем heartbeat
+        var accepted = raftState.ReceiveHeartbeat(request.Term, request.LeaderId);
+
+        if (accepted)
+        {
+            _isPrimary = false;
+            _currentPrimaryUrl = request.LeaderUrl;
+            
+            _logger.LogDebug(
+                "Heartbeat from leader {LeaderId} term={Term} accepted",
+                request.LeaderId, request.Term);
+        }
+        else
+        {
+            _logger.LogWarning(
+                "Heartbeat from {LeaderId} term={Term} rejected (our term={OurTerm})",
+                request.LeaderId, request.Term, raftState.CurrentTerm);
+        }
+
+        return Ok(new HeartbeatResponse
+        {
+            Term = raftState.CurrentTerm,
+            Success = accepted,
+            LeaderId = raftState.CurrentLeaderId
+        });
+    }
+
+    /// <summary>
+    /// Получает текущее Raft состояние (для отладки).
+    /// </summary>
+    [HttpGet("raft-state")]
+    [ProducesResponseType(typeof(RaftStateResponse), StatusCodes.Status200OK)]
+    public IActionResult GetRaftStateEndpoint()
+    {
+        var raftState = GetRaftState();
+        var snapshot = raftState.GetSnapshot();
+
+        return Ok(new RaftStateResponse
+        {
+            NodeId = snapshot.NodeId,
+            CurrentTerm = snapshot.CurrentTerm,
+            VotedFor = snapshot.VotedFor,
+            Role = snapshot.Role.ToString(),
+            LastHeartbeat = snapshot.LastHeartbeat,
+            CurrentLeaderId = snapshot.CurrentLeaderId
+        });
+    }
+
     #region DTOs
 
     public class ReplicationStateResponse
@@ -325,6 +466,11 @@ public class ReplicationController : ControllerBase
         public DateTimeOffset? LastSyncAt { get; set; }
         public int? ShardId { get; set; }
         public int? ReplicaIndex { get; set; }
+        
+        // Raft state
+        public long CurrentTerm { get; set; }
+        public string? VotedFor { get; set; }
+        public string? Role { get; set; }
     }
 
     public class ReplicationEntryRequest
@@ -392,6 +538,85 @@ public class ReplicationController : ControllerBase
     {
         public bool Ok { get; set; }
         public string? Error { get; set; }
+    }
+
+    // ==================== Raft DTOs ====================
+
+    public class VoteRequest
+    {
+        /// <summary>
+        /// Терм кандидата.
+        /// </summary>
+        public long Term { get; set; }
+        
+        /// <summary>
+        /// ID кандидата.
+        /// </summary>
+        public string CandidateId { get; set; } = string.Empty;
+        
+        /// <summary>
+        /// Последний seq кандидата (для сравнения логов).
+        /// </summary>
+        public long LastSeq { get; set; }
+    }
+
+    public class VoteResponse
+    {
+        /// <summary>
+        /// Текущий терм отвечающего узла.
+        /// </summary>
+        public long Term { get; set; }
+        
+        /// <summary>
+        /// Был ли отдан голос.
+        /// </summary>
+        public bool VoteGranted { get; set; }
+    }
+
+    public class HeartbeatRequest
+    {
+        /// <summary>
+        /// Терм лидера.
+        /// </summary>
+        public long Term { get; set; }
+        
+        /// <summary>
+        /// ID лидера.
+        /// </summary>
+        public string LeaderId { get; set; } = string.Empty;
+        
+        /// <summary>
+        /// URL лидера для перенаправления клиентов.
+        /// </summary>
+        public string? LeaderUrl { get; set; }
+    }
+
+    public class HeartbeatResponse
+    {
+        /// <summary>
+        /// Текущий терм отвечающего узла.
+        /// </summary>
+        public long Term { get; set; }
+        
+        /// <summary>
+        /// Был ли heartbeat принят.
+        /// </summary>
+        public bool Success { get; set; }
+
+        /// <summary>
+        /// ID текущего лидера (если известен).
+        /// </summary>
+        public string? LeaderId { get; set; }
+    }
+
+    public class RaftStateResponse
+    {
+        public string NodeId { get; set; } = string.Empty;
+        public long CurrentTerm { get; set; }
+        public string? VotedFor { get; set; }
+        public string Role { get; set; } = string.Empty;
+        public DateTimeOffset LastHeartbeat { get; set; }
+        public string? CurrentLeaderId { get; set; }
     }
 
     #endregion
