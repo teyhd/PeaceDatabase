@@ -1,4 +1,4 @@
-﻿// File: Storage/Binary/CustomBinaryDocumentCodec.cs
+// File: Storage/Binary/CustomBinaryDocumentCodec.cs
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;

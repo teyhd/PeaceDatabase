@@ -1,4 +1,4 @@
-﻿// File: PeaceDatabase.Tests/FileDocumentServiceCrashRecoveryTests.cs
+// File: PeaceDatabase.Tests/FileDocumentServiceCrashRecoveryTests.cs
 using System;
 using System.IO;
 using System.Linq;

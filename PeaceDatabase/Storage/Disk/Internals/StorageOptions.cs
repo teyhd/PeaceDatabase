@@ -1,4 +1,4 @@
-﻿// Fiusing System;
+// Fiusing System;
 
 namespace PeaceDatabase.Storage.Disk.Internals
 {

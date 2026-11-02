@@ -1,4 +1,4 @@
-﻿// File: Controllers/DbAndDocumentsController.cs
+// File: Controllers/DbAndDocumentsController.cs
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Mvc;
 using PeaceDatabase.Core.Models;
@@ -166,12 +166,11 @@ public class DocumentsController : ControllerBase
         var idProp = body.GetType().GetProperty("Id");
         var currentId = idProp?.GetValue(body)?.ToString();
 
-        // Проверяем только если currentId не пустой (пустая строка = не указан)
-        if (!string.IsNullOrEmpty(currentId) && !string.Equals(currentId, id, StringComparison.Ordinal))
+        if (currentId != null && !string.Equals(currentId, id, StringComparison.Ordinal))
             return BadRequest(new { ok = false, error = "_id in body must equal route id", routeId = id, bodyId = currentId });
 
-        // Если Id в теле отсутствует или пустой — попробуем проставить его (если свойство есть и set доступен)
-        if (string.IsNullOrEmpty(currentId) && idProp?.CanWrite == true)
+        // Если Id в теле отсутствует — попробуем проставить его (если свойство есть и set доступен)
+        if (currentId == null && idProp?.CanWrite == true)
             idProp.SetValue(body, id);
 
         var res = _svc.Put(db, body);

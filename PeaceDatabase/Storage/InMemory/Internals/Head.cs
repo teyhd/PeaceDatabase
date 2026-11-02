@@ -1,4 +1,4 @@
-﻿namespace PeaceDatabase.Storage.InMemory.Internals
+namespace PeaceDatabase.Storage.InMemory.Internals
 {
     /// <summary>
     /// "Голова" документа: текущая активная ревизия + флажок удаления.

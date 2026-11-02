@@ -1,4 +1,4 @@
-﻿// File: Storage/Disk/SnapshotManager.cs
+// File: Storage/Disk/SnapshotManager.cs
 using System;
 using System.Collections.Generic;
 using System.IO;

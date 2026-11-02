@@ -1,4 +1,4 @@
-﻿// File: Controllers/DbAndDocumentsController.cs
+// File: Controllers/DbAndDocumentsController.cs
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Mvc;
 using PeaceDatabase.Core.Models;
@@ -7,7 +7,6 @@ using PeaceDatabase.Storage.Binary; // добавлено
 using System.Diagnostics; // для бенчмарка
 using Microsoft.AspNetCore.Http; // for IFormFile
 using Microsoft.AspNetCore.Mvc.ApiExplorer; // for Tags attribute
-using Microsoft.Extensions.Logging; // for ILogger
 
 namespace PeaceDatabase.WebApi.Controllers;
 
@@ -98,8 +97,7 @@ public class DbApiController : ControllerBase
     public IActionResult AllDocs([FromRoute] string db, [FromQuery] int? skip, [FromQuery] int? limit, [FromQuery] bool? includeDeleted)
     {
         var docs = _svc.AllDocs(db, skip ?? 0, limit ?? 100, includeDeleted ?? true);
-        var list = docs?.ToList() ?? new List<Document>();
-        return Ok(new AllDocsResponse { Total = list.Count, Items = list });
+        return Ok(new AllDocsResponse { Total = docs?.Count() ?? 0, Items = docs });
     }
 
     // GET /v1/db/{db}/_seq
@@ -109,15 +107,6 @@ public class DbApiController : ControllerBase
     {
         var seq = _svc.Seq(db);
         return Ok(new SequenceResponse { Db = db, Seq = seq });
-    }
-
-    // GET /v1/db/{db}/_stats
-    [HttpGet("{db}/_stats")]
-    [ProducesResponseType(typeof(StatsDto), StatusCodes.Status200OK)]
-    public IActionResult DbStats([FromRoute] string db)
-    {
-        var stats = _svc.Stats(db);
-        return Ok(stats);
     }
 
     // ---- Поиск по полям ----
@@ -232,12 +221,10 @@ public class DocsApiController : ControllerBase
     {
         var idProp = body.GetType().GetProperty("Id");
         var bodyId = idProp?.GetValue(body)?.ToString();
-        // Проверяем только если bodyId не пустой (пустая строка = не указан)
-        if (!string.IsNullOrEmpty(bodyId) && !string.Equals(bodyId, id, StringComparison.Ordinal))
+        if (bodyId != null && !string.Equals(bodyId, id, StringComparison.Ordinal))
             return BadRequest(new ErrorResponse { Ok = false, Error = "_id in body must equal route id", Db = db, Id = id });
-        
-        // Если Id в теле отсутствует или пустой — проставляем из route
-        if (string.IsNullOrEmpty(bodyId) && idProp?.CanWrite == true)
+
+        if (bodyId == null && idProp?.CanWrite == true)
             idProp.SetValue(body, id);
 
         var res = _svc.Put(db, body);
@@ -251,7 +238,7 @@ public class DocsApiController : ControllerBase
 
         if (res.Doc == null)
             return Problem("put returned null document", statusCode: 500);
-        
+
         return Ok(res.Doc);
     }
 
@@ -442,32 +429,5 @@ public sealed class BenchApiController : ControllerBase
                 deserialize = jsonDesSw.Elapsed.TotalMilliseconds / Math.Max(0.000001, binDesSw.Elapsed.TotalMilliseconds)
             }
         });
-    }
-}
-
-// ===============================
-// Логирование
-// ===============================
-[ApiController]
-[Route("info")]
-[Produces("application/json")]
-public sealed class LogsApiController : ControllerBase
-{
-    private readonly ILogger<LogsApiController> _logger;
-
-    public LogsApiController(ILogger<LogsApiController> logger)
-    {
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-    }
-
-    // GET /info?msg=...
-    [HttpGet]
-    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
-    public IActionResult Log([FromQuery] string? msg)
-    {
-        var message = msg ?? string.Empty;
-        //_logger.LogInformation("INFO: ", message);
-        Console.WriteLine("info: Program[0]\n      " + message);
-        return Ok(new { ok = true, msg = message });
     }
 }

@@ -1,4 +1,4 @@
-﻿// Dtos.cs
+// Dtos.cs
 // DTO для web-слоя: отделяем контракт API от внутренних моделей, добавляем удобные формы запросов.
 
 using System.Collections.Generic;

@@ -1,4 +1,4 @@
-﻿namespace PeaceDatabase.Storage
+namespace PeaceDatabase.Storage
 {
     public class InMemoryKeyValueStore
     {

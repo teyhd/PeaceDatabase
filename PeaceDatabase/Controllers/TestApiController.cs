@@ -1,4 +1,4 @@
-﻿// File: Controllers/TestApiController.cs
+// File: Controllers/TestApiController.cs
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Mvc;
 using PeaceDatabase.Core.Models;

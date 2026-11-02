@@ -1,4 +1,4 @@
-﻿// File: WebApi/Program.cs
+// File: WebApi/Program.cs
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Text;
@@ -20,17 +20,6 @@ using PeaceDatabase.WebApi.Controllers;
 using PeaceDatabase.Storage.Disk;
 using PeaceDatabase.Storage.Disk.Internals;
 
-// ===== Sharding mode (распределённое хранилище)
-using PeaceDatabase.Storage.Sharding;
-using PeaceDatabase.Storage.Sharding.Configuration;
-
-// ===== Replication mode (репликация для отказоустойчивости)
-using PeaceDatabase.Storage.Sharding.Replication;
-using PeaceDatabase.Storage.Sharding.Replication.Client;
-using PeaceDatabase.Storage.Sharding.Replication.Configuration;
-using PeaceDatabase.Storage.Sharding.Routing;
-using Microsoft.Extensions.Hosting;
-
 var builder = WebApplication.CreateBuilder(args);
 
 // ---------- JSON ----------
@@ -50,21 +39,15 @@ builder.Services
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 
-// ---------- Режим хранения (InMemory | File | Sharded) ----------
+// ---------- Режим хранения (InMemory | File) ----------
 string storageMode =
     builder.Configuration["Storage:Mode"]
     ?? Environment.GetEnvironmentVariable("STORAGE_MODE")
     ?? "InMemory";
 
-// Нормализация режима
-storageMode = storageMode.ToLowerInvariant() switch
-{
-    "file" => "File",
-    "sharded" => "Sharded",
-    _ => "InMemory"
-};
+storageMode = storageMode.Equals("File", StringComparison.OrdinalIgnoreCase) ? "File" : "InMemory";
 
-// Настройки файлового хранилища
+// Настройки файлового хранилища (используются только при File)
 var dataRoot = builder.Configuration["Storage:DataRoot"]
                ?? Environment.GetEnvironmentVariable("STORAGE_DATA_ROOT")
                ?? Path.Combine(AppContext.BaseDirectory, "data");
@@ -73,359 +56,19 @@ var storageOptions = new StorageOptions
 {
     DataRoot = dataRoot,
     EnableSnapshots = true,
-    SnapshotEveryNOperations = 500,
+    SnapshotEveryNOperations = 500, // под себя
     SnapshotMaxWalSizeMb = 64,
     Durability = DurabilityLevel.Commit
 };
 
-// ---------- Sharding Configuration ----------
-var shardingOptions = new ShardingOptions();
-builder.Configuration.GetSection("Sharding").Bind(shardingOptions);
-
-// Переопределение через переменные окружения
-if (bool.TryParse(Environment.GetEnvironmentVariable("SHARDING_ENABLED"), out var shardingEnabled))
-    shardingOptions.Enabled = shardingEnabled;
-
-if (int.TryParse(Environment.GetEnvironmentVariable("SHARD_COUNT"), out var shardCount))
-    shardingOptions.ShardCount = shardCount;
-
-if (int.TryParse(Environment.GetEnvironmentVariable("CURRENT_SHARD_ID"), out var currentShardId))
-    shardingOptions.CurrentShardId = currentShardId;
-
-var shardingModeEnv = Environment.GetEnvironmentVariable("SHARDING_MODE");
-if (!string.IsNullOrEmpty(shardingModeEnv))
-    shardingOptions.Mode = shardingModeEnv.Equals("Distributed", StringComparison.OrdinalIgnoreCase)
-        ? ShardingMode.Distributed
-        : ShardingMode.Local;
-
-// ---------- Replication Configuration ----------
-if (bool.TryParse(Environment.GetEnvironmentVariable("REPLICATION_ENABLED"), out var replicationEnabled))
-    shardingOptions.Replication.Enabled = replicationEnabled;
-
-if (int.TryParse(Environment.GetEnvironmentVariable("REPLICA_COUNT"), out var replicaCount))
-    shardingOptions.Replication.ReplicaCount = replicaCount;
-
-if (int.TryParse(Environment.GetEnvironmentVariable("WRITE_QUORUM"), out var writeQuorum))
-    shardingOptions.Replication.WriteQuorum = writeQuorum;
-
-if (int.TryParse(Environment.GetEnvironmentVariable("READ_QUORUM"), out var readQuorum))
-    shardingOptions.Replication.ReadQuorum = readQuorum;
-
-if (int.TryParse(Environment.GetEnvironmentVariable("CURRENT_REPLICA_INDEX"), out var currentReplicaIndex))
-    shardingOptions.Replication.CurrentReplicaIndex = currentReplicaIndex;
-
-// ---------- Raft Configuration (for data nodes) ----------
-if (bool.TryParse(Environment.GetEnvironmentVariable("RAFT_ENABLED"), out var raftEnabled))
-    shardingOptions.Replication.RaftEnabled = raftEnabled;
-
-var raftSelfUrl = Environment.GetEnvironmentVariable("RAFT_SELF_URL");
-if (!string.IsNullOrEmpty(raftSelfUrl))
-    shardingOptions.Replication.RaftSelfUrl = raftSelfUrl;
-
-var raftPeersEnv = Environment.GetEnvironmentVariable("RAFT_PEERS");
-if (!string.IsNullOrEmpty(raftPeersEnv))
-{
-    shardingOptions.Replication.RaftPeers = raftPeersEnv
-        .Split(',', StringSplitOptions.RemoveEmptyEntries)
-        .Select(p => p.Trim())
-        .ToList();
-}
-
-if (int.TryParse(Environment.GetEnvironmentVariable("RAFT_HEARTBEAT_MS"), out var raftHeartbeatMs))
-    shardingOptions.Replication.HeartbeatIntervalMs = raftHeartbeatMs;
-
-if (int.TryParse(Environment.GetEnvironmentVariable("RAFT_ELECTION_MIN_MS"), out var raftElectionMinMs))
-    shardingOptions.Replication.ElectionTimeoutMinMs = raftElectionMinMs;
-
-if (int.TryParse(Environment.GetEnvironmentVariable("RAFT_ELECTION_MAX_MS"), out var raftElectionMaxMs))
-    shardingOptions.Replication.ElectionTimeoutMaxMs = raftElectionMaxMs;
-
-// Регистрируем ShardingOptions для DI (нужно для ReplicationController)
-builder.Services.AddSingleton(shardingOptions);
-
 // ---------- DI ----------
-if (storageMode == "Sharded" || shardingOptions.Enabled)
-{
-    storageMode = "Sharded";
-    builder.Services.AddHttpClient();
-    
-    if (shardingOptions.Replication.Enabled)
-    {
-        // Режим с репликацией - кворумные записи, автоматический failover
-        // Регистрируем ReplicationCoordinator отдельно для HealthMonitor
-        builder.Services.AddSingleton<ReplicationCoordinator>(sp =>
-        {
-            var httpFactory = sp.GetService<IHttpClientFactory>();
-            var loggerFactory = sp.GetService<ILoggerFactory>();
-            var logger = loggerFactory?.CreateLogger<ReplicationCoordinator>();
-            
-            Func<ReplicaInfo, IReplicaClient> clientFactory;
-            if (shardingOptions.Mode == ShardingMode.Local)
-            {
-                var replicaServices = new Dictionary<string, IDocumentService>();
-                clientFactory = replica =>
-                {
-                    if (!replicaServices.TryGetValue(replica.UniqueId, out var service))
-                    {
-                        if (storageOptions != null)
-                        {
-                            var replicaStorageOptions = new StorageOptions
-                            {
-                                DataRoot = Path.Combine(storageOptions.DataRoot, $"shard-{replica.ShardId}", $"replica-{replica.ReplicaIndex}"),
-                                EnableSnapshots = storageOptions.EnableSnapshots,
-                                SnapshotEveryNOperations = storageOptions.SnapshotEveryNOperations,
-                                SnapshotMaxWalSizeMb = storageOptions.SnapshotMaxWalSizeMb,
-                                Durability = storageOptions.Durability
-                            };
-                            service = new FileDocumentService(replicaStorageOptions);
-                        }
-                        else
-                        {
-                            service = new InMemoryDocumentService();
-                        }
-                        replicaServices[replica.UniqueId] = service;
-                    }
-                    return new LocalReplicaClient(replica, service, replica.IsPrimary);
-                };
-            }
-            else
-            {
-                clientFactory = replica =>
-                {
-                    var httpClient = httpFactory?.CreateClient($"replica-{replica.UniqueId}")
-                        ?? new HttpClient { Timeout = TimeSpan.FromSeconds(shardingOptions.RequestTimeoutSeconds) };
-                    var clientLogger = loggerFactory?.CreateLogger<HttpReplicaClient>();
-                    return new HttpReplicaClient(replica, httpClient, clientLogger);
-                };
-            }
-            
-            var coordinator = new ReplicationCoordinator(shardingOptions, clientFactory, logger);
-            coordinator.Initialize();
-            return coordinator;
-        });
-        
-        // Регистрируем IDocumentService
-        builder.Services.AddSingleton<IDocumentService>(sp =>
-        {
-            var coordinator = sp.GetRequiredService<ReplicationCoordinator>();
-            var router = new HashShardRouter(shardingOptions);
-            var loggerFactory = sp.GetService<ILoggerFactory>();
-            var logger = loggerFactory?.CreateLogger<ReplicatedDocumentService>();
-            return new ReplicatedDocumentService(shardingOptions, router, coordinator, logger);
-        });
-        
-        // Регистрируем HealthMonitor как hosted service только для Distributed режима
-        if (shardingOptions.Mode == ShardingMode.Distributed)
-        {
-            // Регистрируем RaftState (единственный экземпляр на узел)
-            // NOTE: All nodes start as Follower - elections determine the leader
-            builder.Services.AddSingleton<RaftState>(sp =>
-            {
-                var nodeId = $"{shardingOptions.CurrentShardId}-{shardingOptions.Replication.CurrentReplicaIndex ?? 0}";
-                var loggerFactory = sp.GetService<ILoggerFactory>();
-                var logger = loggerFactory?.CreateLogger<RaftState>();
-                
-                var raftState = new RaftState(nodeId);
-                // Start as Follower - HeartbeatService will handle elections
-                logger?.LogInformation("RaftState initialized for node {NodeId} as Follower", nodeId);
-                
-                return raftState;
-            });
-            
-            builder.Services.AddSingleton<HealthMonitor>(sp =>
-            {
-                var coordinator = sp.GetRequiredService<ReplicationCoordinator>();
-                var httpFactory = sp.GetService<IHttpClientFactory>();
-                var loggerFactory = sp.GetService<ILoggerFactory>();
-                var logger = sp.GetRequiredService<ILogger<HealthMonitor>>();
-                
-                Func<ReplicaInfo, IReplicaClient> clientFactory = replica =>
-                {
-                    var httpClient = httpFactory?.CreateClient($"health-{replica.UniqueId}")
-                        ?? new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-                    var clientLogger = loggerFactory?.CreateLogger<HttpReplicaClient>();
-                    return new HttpReplicaClient(replica, httpClient, clientLogger);
-                };
-                
-                return new HealthMonitor(shardingOptions.Replication, coordinator, clientFactory, logger);
-            });
-            
-            builder.Services.AddHostedService(sp =>
-            {
-                var healthMonitor = sp.GetRequiredService<HealthMonitor>();
-                var coordinator = sp.GetRequiredService<ReplicationCoordinator>();
-                return new HealthMonitorHostedServiceWrapper(healthMonitor, coordinator, shardingOptions);
-            });
-            
-            // Регистрируем HeartbeatService для Raft консенсуса
-            if (shardingOptions.Replication.RaftEnabled)
-            {
-                builder.Services.AddHostedService<HeartbeatService>(sp =>
-                {
-                    var coordinator = sp.GetRequiredService<ReplicationCoordinator>();
-                    var raftState = sp.GetRequiredService<RaftState>();
-                    var httpFactory = sp.GetService<IHttpClientFactory>();
-                    var loggerFactory = sp.GetService<ILoggerFactory>();
-                    var logger = sp.GetRequiredService<ILogger<HeartbeatService>>();
-                    
-                    Func<ReplicaInfo, IReplicaClient> clientFactory = replica =>
-                    {
-                        var httpClient = httpFactory?.CreateClient($"heartbeat-{replica.UniqueId}")
-                            ?? new HttpClient { Timeout = TimeSpan.FromMilliseconds(shardingOptions.Replication.HeartbeatIntervalMs * 2) };
-                        var clientLogger = loggerFactory?.CreateLogger<HttpReplicaClient>();
-                        return new HttpReplicaClient(replica, httpClient, clientLogger);
-                    };
-                    
-                    return new HeartbeatService(
-                        shardingOptions.Replication,
-                        coordinator,
-                        raftState,
-                        clientFactory,
-                        logger);
-                });
-            }
-        }
-    }
-    else
-    {
-        // Обычное шардирование без репликации
-        builder.Services.AddSingleton<IDocumentService>(sp =>
-        {
-            var httpFactory = sp.GetService<IHttpClientFactory>();
-            var loggerFactory = sp.GetService<ILoggerFactory>();
-            var effectiveStorageOptions = shardingOptions.Mode == ShardingMode.Local ? storageOptions : null;
-            return ShardingServiceBuilder.Build(shardingOptions, effectiveStorageOptions, httpFactory, loggerFactory);
-        });
-    }
-}
-else if (storageMode == "File")
+if (storageMode == "File")
 {
     builder.Services.AddSingleton<IDocumentService>(_ => new FileDocumentService(storageOptions));
 }
 else
 {
     builder.Services.AddSingleton<IDocumentService, InMemoryDocumentService>();
-}
-
-// ---------- Raft for Data Nodes (standalone replicas with peer configuration) ----------
-// If RAFT_ENABLED=true and RAFT_PEERS is set, enable Raft consensus on this data node
-if (shardingOptions.Replication.RaftEnabled 
-    && shardingOptions.Replication.RaftPeers.Count > 0 
-    && !string.IsNullOrEmpty(shardingOptions.Replication.RaftSelfUrl))
-{
-    // Register RaftState for this data node
-    // NOTE: All nodes start as Follower - elections will determine the leader
-    builder.Services.AddSingleton<RaftState>(sp =>
-    {
-        var nodeId = $"{shardingOptions.CurrentShardId}-{shardingOptions.Replication.CurrentReplicaIndex ?? 0}";
-        var loggerFactory = sp.GetService<ILoggerFactory>();
-        var logger = loggerFactory?.CreateLogger<RaftState>();
-        logger?.LogInformation("Initializing RaftState for node {NodeId} as Follower", nodeId);
-        
-        var raftState = new RaftState(nodeId);
-        // Start as Follower - HeartbeatService will trigger election if no leader heartbeat received
-        // This ensures proper term synchronization when nodes rejoin the cluster
-        
-        return raftState;
-    });
-    
-    // Create HttpClientFactory manually for data nodes (they might not have AddHttpClient)
-    builder.Services.AddHttpClient();
-    
-    // Register HeartbeatService as hosted service for Raft consensus
-    builder.Services.AddHostedService<HeartbeatService>(sp =>
-    {
-        var raftState = sp.GetRequiredService<RaftState>();
-        var httpFactory = sp.GetRequiredService<IHttpClientFactory>();
-        var loggerFactory = sp.GetService<ILoggerFactory>();
-        var logger = sp.GetRequiredService<ILogger<HeartbeatService>>();
-        
-        // Build a local ReplicaSet from RAFT_PEERS + self
-        // Determine primary URL: if current node is index 0, self is primary; otherwise first peer is primary
-        var selfUrl = shardingOptions.Replication.RaftSelfUrl!;
-        var peerUrls = shardingOptions.Replication.RaftPeers;
-        var localReplicaIndex = shardingOptions.Replication.CurrentReplicaIndex ?? 0;
-        
-        // Build ordered list: primary first, then replicas
-        // If localReplicaIndex == 0, self is primary
-        // Otherwise, we need to reconstruct the original order
-        string primaryUrl;
-        List<string> replicaUrls;
-        
-        if (localReplicaIndex == 0)
-        {
-            // This node is primary
-            primaryUrl = selfUrl;
-            replicaUrls = peerUrls.ToList();
-        }
-        else
-        {
-            // This node is a replica; first peer should be primary (index 0)
-            // We need to figure out where self fits in the list
-            // Assume peers are ordered: first is always primary, rest are other replicas
-            primaryUrl = peerUrls.FirstOrDefault() ?? selfUrl;
-            replicaUrls = new List<string>();
-            
-            // Add replicas in order, inserting self at the right position
-            var otherPeers = peerUrls.Skip(1).ToList();
-            for (int i = 1; i <= peerUrls.Count; i++)
-            {
-                if (i == localReplicaIndex)
-                {
-                    replicaUrls.Add(selfUrl);
-                }
-                else if (i - 1 < otherPeers.Count)
-                {
-                    replicaUrls.Add(otherPeers[i > localReplicaIndex ? i - 2 : i - 1]);
-                }
-            }
-            // Ensure self is added if not already
-            if (!replicaUrls.Contains(selfUrl))
-            {
-                replicaUrls.Add(selfUrl);
-            }
-        }
-        
-        // Create ReplicaSet for this shard using proper initialization
-        var shardId = shardingOptions.CurrentShardId ?? 0;
-        var replicaSet = new ReplicaSet(
-            shardId,
-            shardingOptions.Replication,
-            loggerFactory?.CreateLogger<ReplicaSet>());
-        
-        replicaSet.Initialize(new ReplicaSetConfig
-        {
-            ShardId = shardId,
-            Primary = primaryUrl,
-            Replicas = replicaUrls
-        });
-        
-        replicaSet.LocalReplicaIndex = localReplicaIndex;
-        
-        // Create a minimal ReplicationCoordinator with just this shard
-        Func<ReplicaInfo, IReplicaClient> clientFactory = replica =>
-        {
-            var httpClient = httpFactory.CreateClient($"raft-{replica.UniqueId}");
-            httpClient.Timeout = TimeSpan.FromMilliseconds(shardingOptions.Replication.HeartbeatIntervalMs * 3);
-            var clientLogger = loggerFactory?.CreateLogger<HttpReplicaClient>();
-            return new HttpReplicaClient(replica, httpClient, clientLogger);
-        };
-        
-        var coordinator = new ReplicationCoordinator(shardingOptions, clientFactory, loggerFactory?.CreateLogger<ReplicationCoordinator>());
-        // Add the local replica set
-        coordinator.AddReplicaSet(replicaSet);
-        
-        logger.LogInformation("Starting HeartbeatService for data node {SelfUrl} with {PeerCount} peers",
-            shardingOptions.Replication.RaftSelfUrl,
-            shardingOptions.Replication.RaftPeers.Count);
-        
-        return new HeartbeatService(
-            shardingOptions.Replication,
-            coordinator,
-            raftState,
-            clientFactory,
-            logger);
-    });
 }
 
 // ---------- Health / CORS / Swagger ----------
@@ -441,11 +84,11 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new() { Title = "PeaceDatabase API", Version = "v1" });
-    
+
     // Configure for complex Dictionary<string, object> types
     c.UseAllOfToExtendReferenceSchemas();
     c.UseOneOfForPolymorphism();
-    
+
     // Custom schema mapping for Dictionary<string, object>
     c.MapType<Dictionary<string, object>>(() => new Microsoft.OpenApi.Models.OpenApiSchema
     {
@@ -461,7 +104,7 @@ builder.Services.AddSwaggerGen(c =>
     {
         Type = "object"
     });
-    
+
     // Include XML comments if available
     var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
     var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
@@ -469,7 +112,7 @@ builder.Services.AddSwaggerGen(c =>
     {
         c.IncludeXmlComments(xmlPath);
     }
-    
+
     // Be more permissive with schema generation
     c.CustomSchemaIds(type => type.FullName?.Replace("+", "."));
 });
@@ -483,6 +126,7 @@ var reqDuration = meter.CreateHistogram<double>("http.requests.duration.ms", uni
 var requestsTotal = 0L;
 
 // ---------- Build ----------
+builder.WebHost.UseUrls("http://0.0.0.0:5000");
 var app = builder.Build();
 
 // ---------- Глобальная обработка ошибок ----------
@@ -551,22 +195,6 @@ app.MapGet("/v1/_stats", () => Results.Ok(new
     service = "PeaceDatabase.WebApi",
     version = "1.0.0",
     storageMode,
-    sharding = new
-    {
-        enabled = shardingOptions.Enabled || storageMode == "Sharded",
-        mode = shardingOptions.Mode.ToString(),
-        shardCount = shardingOptions.ShardCount,
-        currentShardId = shardingOptions.CurrentShardId
-    },
-    replication = new
-    {
-        enabled = shardingOptions.Replication.Enabled,
-        replicaCount = shardingOptions.Replication.ReplicaCount,
-        writeQuorum = shardingOptions.Replication.WriteQuorum,
-        readQuorum = shardingOptions.Replication.ReadQuorum,
-        syncMode = shardingOptions.Replication.SyncMode.ToString(),
-        currentReplicaIndex = shardingOptions.Replication.CurrentReplicaIndex
-    },
     timeUtc = DateTime.UtcNow
 }));
 
@@ -741,63 +369,5 @@ static class StorageEndpoints
         foreach (var c in Path.GetInvalidFileNameChars())
             s = s.Replace(c, '_');
         return s;
-    }
-}
-
-/// <summary>
-/// Hosted service wrapper для HealthMonitor.
-/// </summary>
-internal sealed class HealthMonitorHostedServiceWrapper : IHostedService
-{
-    private readonly HealthMonitor _healthMonitor;
-    private readonly ReplicationCoordinator _coordinator;
-    private readonly ShardingOptions _options;
-    private Task? _runningTask;
-    private CancellationTokenSource? _cts;
-
-    public HealthMonitorHostedServiceWrapper(
-        HealthMonitor healthMonitor,
-        ReplicationCoordinator coordinator,
-        ShardingOptions options)
-    {
-        _healthMonitor = healthMonitor;
-        _coordinator = coordinator;
-        _options = options;
-
-        // Подписываемся на события
-        _healthMonitor.PrimaryDown += OnPrimaryDown;
-    }
-
-    public Task StartAsync(CancellationToken cancellationToken)
-    {
-        // Пропускаем для локального режима
-        if (_options.Mode == ShardingMode.Local || !_options.Replication.Enabled)
-            return Task.CompletedTask;
-
-        _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        _runningTask = _healthMonitor.StartAsync(_cts.Token);
-        return Task.CompletedTask;
-    }
-
-    public async Task StopAsync(CancellationToken cancellationToken)
-    {
-        if (_runningTask == null)
-            return;
-
-        _cts?.Cancel();
-
-        try
-        {
-            await _healthMonitor.StopAsync(cancellationToken);
-        }
-        catch (OperationCanceledException)
-        {
-            // Expected
-        }
-    }
-
-    private async void OnPrimaryDown(object? sender, PrimaryDownEventArgs e)
-    {
-        await _coordinator.HandlePrimaryDownAsync(e.ShardId);
     }
 }

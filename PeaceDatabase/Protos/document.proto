@@ -15,5 +15,3 @@ message DocumentMessage {
   repeated string tags = 5;
   string content = 6;          // may be empty when null
 }
-
-

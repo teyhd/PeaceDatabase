@@ -18,11 +18,11 @@
 
 ## Сравнение сериализации/десериализации документов в разных форматах (JSON, Binary, Protobuf)
 
-![Serialize](tools/docs/SaDCA-lab1-custom-protobuf/benchmark_news/bytes_per_doc.png)
+![Serialize](tools/docs/benchmarks_news/bytes_per_doc.png)
 
-![Deserialize](tools/docs/SaDCA-lab1-custom-protobuf/benchmark_news/deserialize_vs_n.png)
+![Deserialize](tools/docs/benchmarks_news/deserialize_vs_n.png)
 
-![BytesPerDoc](tools/docs/SaDCA-lab1-custom-protobuf/benchmark_news/bytes_per_doc.png)
+![BytesPerDoc](tools/docs/benchmarks_news/bytes_per_doc.png)
 
 
 ### Цели
@@ -34,7 +34,7 @@
 
 ### Алгоритм и особенности сравнения
 
-1. **Датасеты**  
+1. **Датасеты**
    - Простые (`news`, `iris`): каждая строка — единичная, плоская запись (JSONL).
    - Сложные (`AMZN`): вложенный JSON, таблицы, метаданные, массивы и деревья - тяжело поддерживать, нужны преобразования.
 
@@ -60,7 +60,7 @@ format ∈ {json,binary,protobuf}, n, totalBytes, avgBytesPerDoc.
 меньше serializeMs/deserializeMs → быстрее;
 speedup(format) = serializeMs(JSON)/serializeMs(format) (и так же для deserializeMs).
 
-Важно: измеряется суммарное время, а не «на документ». Для «честного» сравнения можно делить результат на n (и на iterations, если >1). 
+Важно: измеряется суммарное время, а не «на документ». Для «честного» сравнения можно делить результат на n (и на iterations, если >1).
 Это не меняет порядка победителей, но делает цифры понятнее.
 ---
 
