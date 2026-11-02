@@ -1,6 +1,6 @@
-﻿# PeaceDatabase
+# PeaceDatabase
 
-Документоориентированная база данных (аналог MongoDB), реализованная на C# (.NET 8). 
+Документоориентированная база данных (аналог MongoDB), реализованная на C# (.NET 8).
 Проект строится по многоуровневой архитектуре, возможна расширяемость и заменяемость компонентов.
 
 ---
@@ -34,7 +34,7 @@
 
 ### API Layer
 
-- **DbAndDocumentsController** — CRUD-операции, поиск, быстрая статистика по БД и другое.
+- **DbController** — базовые CRUD-операции, _all_docs, _changes.
 - **AttachmentsController** — работа с вложениями (PUT/GET/DELETE).
 - **ReplicationController** — интерфейс для репликации (push/pull).
 
@@ -62,7 +62,7 @@
 
 - **Core**: Document, IDocumentService.
 - **Storage**: InMemoryDocumentService (in-memory CRUD, AllDocs, Changes).
-- **API**: DbAndDocumentsController (эндпоинты для CRUD и просмотра изменений).
+- **API**: DbController (эндпоинты для CRUD и просмотра изменений).
 
 [![Architecture Diagram1](docs/images/Lab1.png)](docs/images/Lab1.png)
 

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -63,7 +63,7 @@ namespace PeaceDatabase.Tests.Storage
         }
 
         [Fact]
-        public void FullTextSearch_Microbenchmark_100Runs_Avg_And_Median()
+        public void FullTextSearch_Microbenchmark_50Runs_Avg_And_Median()
         {
             // Arrange
             var svc = new InMemoryDocumentService();
@@ -81,7 +81,7 @@ namespace PeaceDatabase.Tests.Storage
                 "indexing",
                 "token",
                 "bench performance",
-                "engines documents",
+                "couch engines documents",
                 "speed search",
                 "relevance",
                 "n-gram",
@@ -89,8 +89,8 @@ namespace PeaceDatabase.Tests.Storage
                 "gibberish123"      // промах
             };
 
-            // 100 прогонов
-            const int runs = 100;
+            // 50 прогонов
+            const int runs = 50;
             var timesMs = new List<double>(runs);
             var rnd = new Random(42);
 
@@ -135,7 +135,7 @@ namespace PeaceDatabase.Tests.Storage
                 new Document {
                     Data = new Dictionary<string, object> {
                         ["title"]   = "Intro to Document Databases",
-                        ["content"] = "engines store documents. Full-text indexing helps finding words quickly."
+                        ["content"] = "Couch-like engines store documents. Full-text indexing helps finding words quickly."
                     }
                 },
                 new Document {

@@ -1,4 +1,4 @@
-﻿// File: Storage/Disk/FileDocumentService.cs
+// File: Storage/Disk/FileDocumentService.cs
 using System;
 using System.Collections.Generic;
 using System.IO;

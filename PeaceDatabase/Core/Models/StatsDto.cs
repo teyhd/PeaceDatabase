@@ -1,4 +1,4 @@
-﻿namespace PeaceDatabase.Core.Models
+namespace PeaceDatabase.Core.Models
 {
     public sealed class StatsDto
     {

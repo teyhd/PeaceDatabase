@@ -1,4 +1,4 @@
-﻿using FluentAssertions;
+using FluentAssertions;
 using PeaceDatabase.Core.Services;
 using PeaceDatabase.Storage;
 using PeaceDatabase.Storage.InMemory;

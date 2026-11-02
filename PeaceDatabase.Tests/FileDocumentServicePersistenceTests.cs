@@ -1,4 +1,4 @@
-﻿// File: PeaceDatabase.Tests/FileDocumentServicePersistenceTests.cs
+// File: PeaceDatabase.Tests/FileDocumentServicePersistenceTests.cs
 using System;
 using System.IO;
 using System.Linq;

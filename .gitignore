@@ -1,74 +1,17 @@
-# ---- .NET build ----
-bin/
-obj/
-[Bb]uild/
-[Ll]og/
-[Ll]ogs/
-
-# ---- VS/VSCode/Rider ----
 .vs/
-.idea/
-*.suo
-*.user
-*.userosscache
-*.sln.docstates
-
-# ---- Paket / NuGet ----
-*.nupkg
-*.snupkg
-*.nuspec
-*.psmdcp
+**/bin/
+**/obj/
 packages/
-*.deps.json
-*.dll
-*.exe
-*.db
-*.pdb
-*.cache
-project.lock.json
-project.fragment.lock.json
-artifacts/
-
-# ---- Test results ----
-TestResults/
-*.coverage
-*.coveragexml
-*.trx
-
-# ---- OS generated ----
-[Tt]humbs.db
-ehthumbs.db
-[Dd]esktop.ini
-$RECYCLE.BIN/
-
-# ---- Logs & dumps ----
+.env
+.env.*
+!.env.example
+data/
 *.log
-*.dmp
-
-# ---- Configs (если приватные) ----
-*.env
-*.local.json
-appsettings.Development.json
-secrets.json
-
-# ---- Rider / JetBrains ----
-.idea/
-*.iml
-
-# ---- VSCode ----
-.vscode/
-.history/
-*.code-workspace
-*.mdc
-AGENTS.md
-
-# ---- Temporary ----
-~$*
-*.tmp
-*.bak
-*.swp
-*.swo
-
-# ---- PeaceDatabase custom ----
-/PeaceDatabase.Storage.File/*.wal
-/PeaceDatabase.Storage.File/*.snapshot
+*.exe
+*.dll
+*.pdb
+*.pfx
+*.mp3
+*.wav
+*.png
+*.ico

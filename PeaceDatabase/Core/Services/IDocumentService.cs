@@ -1,9 +1,11 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using PeaceDatabase.Core.Models;
 
 namespace PeaceDatabase.Core.Services
 {
-
+    /// <summary>
+    /// Контракт для документной БД (упрощённый аналог API CouchDB).
+    /// </summary>
     public interface IDocumentService
     {
         // ---------- Управление базами ----------
@@ -45,11 +47,6 @@ namespace PeaceDatabase.Core.Services
         /// Текущая последовательность изменений (аналог update_seq).
         /// </summary>
         int Seq(string db);
-
-        /// <summary>
-        /// Статистика по базе (число документов, токены и т.д.).
-        /// </summary>
-        StatsDto Stats(string db);
 
         // ---------- Поиск ----------
         /// <summary>
